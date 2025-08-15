@@ -601,19 +601,33 @@ export default function SquadPage() {
   };
 
   const setCaptain = (playerId: string) => {
-    setSquad(prev => prev.map(player => ({
-      ...player,
-      is_captain: player.id === playerId,
-      is_vice_captain: player.is_vice_captain && player.id !== playerId
-    })));
+    console.log('setCaptain called with playerId:', playerId);
+    setSquad(prev => {
+      const updated = prev.map(player => ({
+        ...player,
+        // 只有被选中的球员成为队长
+        is_captain: player.id === playerId,
+        // 如果当前球员被设为队长，则不能是副队长
+        is_vice_captain: player.id === playerId ? false : player.is_vice_captain
+      }));
+      console.log('Updated squad after setCaptain:', updated);
+      return updated;
+    });
   };
 
   const setViceCaptain = (playerId: string) => {
-    setSquad(prev => prev.map(player => ({
-      ...player,
-      is_vice_captain: player.id === playerId,
-      is_captain: player.is_captain && player.id !== playerId
-    })));
+    console.log('setViceCaptain called with playerId:', playerId);
+    setSquad(prev => {
+      const updated = prev.map(player => ({
+        ...player,
+        // 如果当前球员被设为副队长，则不能是队长
+        is_captain: player.id === playerId ? false : player.is_captain,
+        // 只有被选中的球员成为副队长
+        is_vice_captain: player.id === playerId
+      }));
+      console.log('Updated squad after setViceCaptain:', updated);
+      return updated;
+    });
   };
 
   const stats = calculateTeamStats();
@@ -743,7 +757,7 @@ export default function SquadPage() {
               )}
               
               {/* 足球场 */}
-              <div className="bg-gradient-to-t from-green-400 to-green-300 rounded-lg p-8 min-h-[600px] relative overflow-hidden">
+              <div className="bg-gradient-to-t from-green-400 to-green-300 rounded-lg p-8 min-h-[600px] relative overflow-visible">
                 {/* 场地标线 */}
                 <div className="absolute inset-0 opacity-20">
                   <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-16 h-8 border-2 border-white"></div>

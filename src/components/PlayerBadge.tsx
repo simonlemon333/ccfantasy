@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface SquadPlayer {
   id: string;
@@ -36,16 +36,40 @@ export default function PlayerBadge({
   const lastName = player.name ? player.name.split(' ').pop() : '';
   const teamLabel = player.teams?.short_name || player.teams?.name || '';
 
-  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuOpen) {
+        setMenuOpen(false);
+      }
+    }
+    
+    if (menuOpen) {
+      document.addEventListener('click', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [menuOpen]);
+
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log('PlayerBadge clicked', { 
+      playerName: player.name,
+      hasAssignCaptain: !!onAssignCaptain,
+      hasAssignVice: !!onAssignVice,
+      currentMenuOpen: menuOpen
+    });
     if (onAssignCaptain || onAssignVice) {
       setMenuOpen(prev => !prev);
     }
   };
 
   return (
-    <div className="relative group flex flex-col items-center w-20">
+    <div className="relative group flex flex-col items-center w-20 overflow-visible">
       <div onClick={handleClick} className="w-16 h-16 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white cursor-pointer relative">
         <img
           src={player.photo_url || '/players/default.svg'}
@@ -53,45 +77,69 @@ export default function PlayerBadge({
           className="w-full h-full object-cover"
           onError={(e) => { e.currentTarget.src = '/players/default.svg'; }}
         />
-
-        {player.is_captain && (
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center text-xs font-bold shadow-md">C</div>
-        )}
-
-        {player.is_vice_captain && (
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md">V</div>
-        )}
-
-        {/* Hover tooltip: show detailed info */}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-56 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-200 z-[60]">
-          <div className="bg-white text-sm rounded shadow-lg p-3 border border-gray-200">
-            <div className="font-semibold truncate" style={{ backgroundColor: player.teams?.primary_color || 'transparent', color: player.teams?.primary_color ? 'white' : 'black', padding: '2px 4px', borderRadius: 4 }}>{player.name}</div>
-            <div className="text-xs text-gray-600 mt-1"><span className="font-bold">{teamLabel}</span> · {player.position}</div>
-            <div className="mt-1 text-xs text-gray-700 flex justify-between">
-              <div>积分: <span className="font-bold">{player.total_points ?? 0}</span></div>
-              <div>价格: <span className="font-bold">£{(player.price ?? 0).toFixed(1)}m</span></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Click menu for assign actions */}
-        {menuOpen && (
-          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[70]">
-            <div className="bg-white rounded shadow-lg p-2 border border-gray-200 text-sm min-w-[120px]">
-              {onAssignCaptain && (
-                <button onClick={(e) => { e.stopPropagation(); onAssignCaptain(player.id); setMenuOpen(false); }} className="block w-full text-left px-2 py-1 hover:bg-gray-100">设为队长</button>
-              )}
-              {onAssignVice && (
-                <button onClick={(e) => { e.stopPropagation(); onAssignVice(player.id); setMenuOpen(false); }} className="block w-full text-left px-2 py-1 hover:bg-gray-100">设为副队长</button>
-              )}
-              <button onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} className="block w-full text-left px-2 py-1 text-gray-600">取消</button>
-            </div>
-          </div>
-        )}
       </div>
 
+      {/* Hover tooltip: moved outside of image container and positioned below */}
+      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-200 z-[99999]">
+        <div className="bg-white text-sm rounded shadow-lg p-3 border border-gray-200">
+          <div className="font-semibold truncate" style={{ backgroundColor: player.teams?.primary_color || 'transparent', color: player.teams?.primary_color ? 'white' : 'black', padding: '2px 4px', borderRadius: 4 }}>{player.name}</div>
+          <div className="text-xs text-gray-600 mt-1"><span className="font-bold">{teamLabel}</span> · {player.position}</div>
+          <div className="mt-1 text-xs text-gray-700 flex justify-between">
+            <div>积分: <span className="font-bold">{player.total_points ?? 0}</span></div>
+            <div>价格: <span className="font-bold">£{(player.price ?? 0).toFixed(1)}m</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Click menu for assign actions - moved outside the overflow-hidden container */}
+      {menuOpen && (() => {
+        console.log('Rendering menu for player:', player.name, { onAssignCaptain: !!onAssignCaptain, onAssignVice: !!onAssignVice });
+        return (
+          <div 
+            className="absolute left-1/2 -translate-x-1/2 top-16 mt-2 z-[99999]" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-white rounded shadow-lg p-2 border border-gray-200 text-sm min-w-[120px]">
+              {onAssignCaptain && (
+                <button onClick={(e) => { 
+                  e.preventDefault();
+                  e.stopPropagation(); 
+                  console.log('Captain button clicked for player:', player.id, player.name);
+                  onAssignCaptain(player.id); 
+                  setMenuOpen(false); 
+                }} className="block w-full text-left px-2 py-1 hover:bg-gray-100 rounded">设为队长</button>
+              )}
+              {onAssignVice && (
+                <button onClick={(e) => { 
+                  e.preventDefault();
+                  e.stopPropagation(); 
+                  console.log('Vice captain button clicked for player:', player.id, player.name);
+                  onAssignVice(player.id); 
+                  setMenuOpen(false); 
+                }} className="block w-full text-left px-2 py-1 hover:bg-gray-100 rounded">设为副队长</button>
+              )}
+              <button onClick={(e) => { 
+                e.preventDefault();
+                e.stopPropagation(); 
+                console.log('Cancel button clicked');
+                setMenuOpen(false); 
+              }} className="block w-full text-left px-2 py-1 text-gray-600 hover:bg-gray-100 rounded">取消</button>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="mt-1 text-center w-full">
-        <div className={`text-xs font-bold text-gray-800 truncate ${getPositionColor(player.position)}`} style={{ padding: '2px 6px', borderRadius: 6 }}>{lastName}</div>
+        <div className="flex items-center justify-center gap-1">
+          <div className={`text-xs font-bold text-gray-800 truncate ${getPositionColor(player.position)}`} style={{ padding: '2px 6px', borderRadius: 6 }}>{lastName}</div>
+          {/* Captain/Vice Captain badges moved here */}
+          {player.is_captain && (
+            <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center text-xs font-bold text-white border border-white shadow-sm">C</div>
+          )}
+          {player.is_vice_captain && !player.is_captain && (
+            <div className="w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center text-xs font-bold text-white border border-white shadow-sm">V</div>
+          )}
+        </div>
         {teamLabel && (
           <div className="mt-0.5 text-[10px] px-2 py-0.5 rounded-full inline-block truncate font-bold">
             {teamLabel}
