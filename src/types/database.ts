@@ -107,6 +107,7 @@ export interface Database {
           price: number;
           points: number;
           is_available: boolean;
+          photo_url: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -118,6 +119,7 @@ export interface Database {
           price: number;
           points?: number;
           is_available?: boolean;
+          photo_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -129,6 +131,7 @@ export interface Database {
           price?: number;
           points?: number;
           is_available?: boolean;
+          photo_url?: string | null;
           updated_at?: string;
         };
       };

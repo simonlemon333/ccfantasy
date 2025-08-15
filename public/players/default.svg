@@ -1,0 +1,6 @@
+<svg width="250" height="250" viewBox="0 0 250 250" xmlns="http://www.w3.org/2000/svg">
+  <rect width="250" height="250" fill="#f3f4f6"/>
+  <circle cx="125" cy="100" r="40" fill="#9ca3af"/>
+  <path d="M75 180 Q125 150 175 180 L175 250 L75 250 Z" fill="#9ca3af"/>
+  <text x="125" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#6b7280">球员</text>
+</svg>

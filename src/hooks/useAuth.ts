@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { MockUser } from '../lib/mockAuth';
+import type { AuthUser } from '../lib/auth';
 import { auth } from '../lib/auth';
 
 // Custom hook for authentication state management
 export function useAuth() {
-  const [user, setUser] = useState<MockUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

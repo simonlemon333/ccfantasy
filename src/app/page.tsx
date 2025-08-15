@@ -44,7 +44,7 @@ export default function HomePage() {
           <Card className="text-center">
             <div className="text-4xl mb-4">🦄</div>
             <h4 className="text-xl font-bold text-gray-800 mb-4">焦点球员</h4>
-            <p className="text-gray-600">基于真实比赛数据，让你的fantasy体验更加真实</p>
+            <p className="text-gray-600">每周焦点球员推荐</p>
           </Card>
         </div>
       </section>
