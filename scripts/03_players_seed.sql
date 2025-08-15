@@ -1,7 +1,7 @@
 -- Premier League Players Seed Data
 -- Sample players for each team and position for 2024-25 season
 
-INSERT INTO public.players (id, name, position, team_id, price, total_points, goals, assists, clean_sheets, yellow_cards, red_cards, saves, bonus_points, is_available) VALUES
+INSERT INTO public.players (name, position, team_id, price, total_points, goals, assists, clean_sheets, yellow_cards, red_cards, saves, bonus_points, is_available) VALUES
 
 -- Arsenal Players
 -- Goalkeepers

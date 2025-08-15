@@ -47,13 +47,6 @@ export default function LoginPage() {
               </div>
             )}
 
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-blue-600 text-sm">
-                <strong>测试账户：</strong><br />
-                邮箱：admin@ccfantasy.com<br />
-                密码：任意密码
-              </p>
-            </div>
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>

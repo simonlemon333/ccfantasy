@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { validateLineup, calculateLineupCost } from '@/lib/validateLineup';
+import { getSupabaseUser } from '@/lib/getSupabaseUser';
+import { validateLineup, calculateLineupCost, DEFAULT_CONSTRAINTS } from '@/lib/validateLineup';
 
 interface PlayerSelection {
   id: string;
@@ -19,8 +20,22 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const roomId = searchParams.get('roomId');
     const gameweek = searchParams.get('gameweek');
+    const lineupId = searchParams.get('lineupId');
 
-    let query = supabase
+    console.log('GET /api/lineups params:', { userId, roomId, gameweek, lineupId });
+
+    // Use user client for RLS consistency if Authorization header is present
+    let queryClient = supabase;
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const supabaseUserResult = await getSupabaseUser(request);
+      if (!(supabaseUserResult as any).error) {
+        queryClient = (supabaseUserResult as any).supabaseUser;
+        console.log('Using user client for GET query');
+      }
+    }
+
+    let query = queryClient
       .from('lineups')
       .select(`
         *,
@@ -29,7 +44,7 @@ export async function GET(request: NextRequest) {
         lineup_players(
           *,
           players(
-            id, name, position, price, total_points,
+            id, name, position, price, total_points, photo_url,
             teams(short_name, name, logo_url, primary_color)
           )
         )
@@ -45,11 +60,15 @@ export async function GET(request: NextRequest) {
     if (gameweek) {
       query = query.eq('gameweek', parseInt(gameweek));
     }
+    if (lineupId) {
+      query = query.eq('id', lineupId);
+    }
 
     // Order by latest first
     query = query.order('created_at', { ascending: false });
 
     const { data: lineups, error } = await query;
+    console.log('Query result:', { lineups: lineups?.length || 0, error });
 
     if (error) throw error;
 
@@ -83,27 +102,46 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validation
-    if (!userId || !roomId || !gameweek || !players || !Array.isArray(players)) {
+    if (!userId || !gameweek || !players || !Array.isArray(players)) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required fields: userId, roomId, gameweek, players'
+        error: 'Missing required fields: userId, gameweek, players'
       }, { status: 400 });
     }
 
-    // Verify user is member of room
-    const { data: membership, error: membershipError } = await supabase
-      .from('room_members')
-      .select('id')
-      .eq('room_id', roomId)
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
+    // If this is a submitted lineup it must belong to a room and user must be a member.
+    // If it's a draft (isSubmitted === false), allow saving without room membership or even roomId.
+    const isSubmittedFlag = !!isSubmitted;
 
-    if (membershipError || !membership) {
-      return NextResponse.json({
-        success: false,
-        error: 'User is not a member of this room'
-      }, { status: 403 });
+  // Create a per-request supabase client using the user's access token so RLS will apply the user's identity
+  const supabaseUserResult = await getSupabaseUser(request);
+  // Narrow union: if helper returned an error response, return it directly
+  if ((supabaseUserResult as any).error) {
+    return (supabaseUserResult as any).error;
+  }
+  // At this point TypeScript still can't infer the exact supabase client type from the helper,
+  // so cast to any for server-side DB operations to avoid noisy type errors.
+  const { supabaseUser } = supabaseUserResult as { supabaseUser: any };
+
+    if (isSubmittedFlag) {
+      if (!roomId) {
+        return NextResponse.json({ success: false, error: 'roomId required when submitting lineup' }, { status: 400 });
+      }
+
+      const { data: membership, error: membershipError } = await supabaseUser
+        .from('room_members')
+        .select('id')
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (membershipError || !membership) {
+        return NextResponse.json({
+          success: false,
+          error: 'User is not a member of this room'
+        }, { status: 403 });
+      }
     }
 
     // Get player details from database for validation
@@ -145,33 +183,91 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // Validate lineup
+  // Validate lineup (allow drafts to be less strict? use same validator but it's sized for 11)
     const validation = validateLineup(validationPlayers);
     if (!validation.isValid) {
-      return NextResponse.json({
-        success: false,
-        error: 'Lineup validation failed',
-        details: validation.errors
-      }, { status: 400 });
+      // Map team IDs in validation errors to team names where possible
+      try {
+        // compute team counts to find offending teams
+        const teamCounts = validationPlayers.reduce((acc: Record<string, number>, p) => {
+          const t = p.team_id || 'unknown';
+          acc[t] = (acc[t] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        const offendingTeamIds = Object.entries(teamCounts)
+          .filter(([, cnt]) => cnt > (DEFAULT_CONSTRAINTS.maxPlayersPerTeam || 3))
+          .map(([id]) => id);
+
+        let idToName: Record<string, string> = {};
+        if (offendingTeamIds.length > 0) {
+          const { data: teamsData } = await supabase
+            .from('teams')
+            .select('id, name')
+            .in('id', offendingTeamIds as string[]);
+          if (teamsData && Array.isArray(teamsData)) {
+            idToName = teamsData.reduce((m: Record<string, string>, t: any) => { m[t.id] = t.name; return m; }, {} as Record<string,string>);
+          }
+        }
+
+        const mappedErrors = validation.errors.map(err => {
+          let replaced = err;
+          offendingTeamIds.forEach(tid => {
+            const name = idToName[tid];
+            if (name) replaced = replaced.split(tid).join(name);
+          });
+          return replaced;
+        });
+
+        const combinedError = mappedErrors.length > 0 ? `Lineup validation failed: ${mappedErrors[0]}` : 'Lineup validation failed';
+
+        return NextResponse.json({
+          success: false,
+          error: combinedError,
+          details: mappedErrors
+        }, { status: 400 });
+      } catch (mapErr) {
+        // Fallback: return original validation errors
+        return NextResponse.json({
+          success: false,
+          error: 'Lineup validation failed',
+          details: validation.errors
+        }, { status: 400 });
+      }
     }
 
     // Calculate total cost
     const totalCost = calculateLineupCost(validationPlayers);
 
+    // If saving as draft (room_id is null), delete any existing drafts for this user first
+    if (!roomId) {
+      console.log('Saving as draft - removing existing drafts for user:', userId);
+      const { error: deleteDraftsError } = await supabaseUser
+        .from('lineups')
+        .delete()
+        .eq('user_id', userId)
+        .is('room_id', null);
+      
+      if (deleteDraftsError) {
+        console.error('Error deleting existing drafts:', deleteDraftsError);
+        // Don't throw here, continue with save
+      }
+    }
+
     // Check if lineup already exists for this user/room/gameweek
-    const { data: existingLineup, error: existingError } = await supabase
+  const { data: existingLineup, error: existingError } = await supabase
       .from('lineups')
       .select('id')
       .eq('user_id', userId)
       .eq('room_id', roomId)
       .eq('gameweek', gameweek)
-      .single();
+      .maybeSingle();
 
     let lineupId: string;
 
     if (existingLineup) {
       // Update existing lineup
-      const { data: updatedLineup, error: updateError } = await supabase
+      const { data: updatedLineup, error: updateError } = await supabaseUser
         .from('lineups')
         .update({
           formation,
@@ -184,13 +280,14 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', existingLineup.id)
         .select()
-        .single();
+        .maybeSingle();
 
       if (updateError) throw updateError;
+      if (!updatedLineup) throw new Error('Update returned no rows — possible RLS/permission issue');
       lineupId = updatedLineup.id;
 
       // Delete existing lineup players
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseUser
         .from('lineup_players')
         .delete()
         .eq('lineup_id', lineupId);
@@ -199,7 +296,7 @@ export async function POST(request: NextRequest) {
 
     } else {
       // Create new lineup
-      const { data: newLineup, error: createError } = await supabase
+      const { data: newLineup, error: createError } = await supabaseUser
         .from('lineups')
         .insert({
           user_id: userId,
@@ -213,9 +310,10 @@ export async function POST(request: NextRequest) {
           submitted_at: isSubmitted ? new Date().toISOString() : null
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (createError) throw createError;
+      if (!newLineup) throw new Error('Insert returned no rows — possible RLS/permission issue');
       lineupId = newLineup.id;
     }
 
@@ -230,14 +328,14 @@ export async function POST(request: NextRequest) {
       multiplier: player.is_captain ? 2 : 1
     }));
 
-    const { error: insertError } = await supabase
+    const { error: insertError } = await supabaseUser
       .from('lineup_players')
       .insert(lineupPlayersData);
 
     if (insertError) throw insertError;
 
-    // Fetch complete lineup data
-    const { data: completeLineup, error: fetchError } = await supabase
+    // Fetch complete lineup data using the same user client to ensure RLS consistency
+  const { data: completeLineup, error: fetchError } = await supabaseUser
       .from('lineups')
       .select(`
         *,
@@ -246,15 +344,16 @@ export async function POST(request: NextRequest) {
         lineup_players(
           *,
           players(
-            id, name, position, price, total_points,
+            id, name, position, price, total_points, photo_url,
             teams(short_name, name, logo_url)
           )
         )
       `)
       .eq('id', lineupId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) throw fetchError;
+    if (!completeLineup) throw new Error('Failed to fetch lineup after save — row not found (possible RLS)');
 
     return NextResponse.json({
       success: true,
@@ -267,9 +366,21 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error creating/updating lineup:', error);
-    return NextResponse.json({
+    // Try to extract useful information from the error object (supabase errors often include message/details)
+    const errAny = error as any;
+    const errMsg = errAny?.message || errAny?.msg || String(errAny);
+    const errDetailCandidates = [] as string[];
+    if (errAny?.details) errDetailCandidates.push(String(errAny.details));
+    if (errAny?.hint) errDetailCandidates.push(String(errAny.hint));
+    if (errAny?.message) errDetailCandidates.push(String(errAny.message));
+
+    const responseBody: any = {
       success: false,
-      error: 'Failed to create/update lineup'
-    }, { status: 500 });
+      error: `Failed to create/update lineup${errMsg ? `: ${errMsg}` : ''}`
+    };
+    if (errDetailCandidates.length > 0) responseBody.details = errDetailCandidates;
+    if (process.env.NODE_ENV !== 'production') responseBody._raw = errAny;
+
+    return NextResponse.json(responseBody, { status: 500 });
   }
 }

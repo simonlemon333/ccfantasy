@@ -31,15 +31,16 @@ interface LineupConstraints {
 
 // Default Premier League fantasy constraints
 export const DEFAULT_CONSTRAINTS: LineupConstraints = {
-  maxBudget: 100.0,
+  maxBudget: 70.0,
   maxPlayersPerTeam: 3,
   requiredPositions: {
-    GK: { min: 2, max: 2 },
-    DEF: { min: 5, max: 5 },
-    MID: { min: 5, max: 5 },
-    FWD: { min: 3, max: 3 }
+    // For the 11-player (no bench) mode: GK must be 1, other positions limited by formation rules
+    GK: { min: 1, max: 1 },
+    DEF: { min: 3, max: 5 },
+    MID: { min: 2, max: 5 },
+    FWD: { min: 1, max: 3 }
   },
-  totalPlayers: 15,
+  totalPlayers: 11,
   startingXI: 11
 };
 
