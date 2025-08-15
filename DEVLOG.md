@@ -630,4 +630,129 @@ export async function GET(
 **最终状态**: 后端API基础设施技术栈完全稳定，准备进入部署阶段。
 
 ---
-*Last Updated: 2025-08-14 - Day 3 Complete: Backend + Technical Resolution* 🎯
+
+### 🌐 Day 3 Extension - 真实数据API集成策略 (2025-08-14)
+
+**背景决策**:
+在完成后端API基础设施后，进行了真实体育数据源调研，确定了可持续的免费数据获取方案。
+
+**🎯 选定的数据源组合**:
+
+**英超 Fantasy (EPL)**:
+- **主数据源**: Fantasy Premier League (FPL) 官方API
+  - 覆盖: 球员Fantasy得分、价格、赛程、阵容状态
+  - 优势: 无请求限制，数据最新，专为Fantasy设计
+  - 时效性: 比赛结束后30秒-2分钟更新
+
+- **补充数据源**: Football-Data.org API  
+  - 覆盖: 详细阵容、比赛事件、进球时间线
+  - 限制: 10次/分钟 (注册后可提升)
+  - 策略: 仅在比赛结束后拉取详细信息
+
+**NBA Fantasy**:
+- **主数据源**: balldontlie API
+  - 覆盖: 完整box score统计 (PTS/REB/AST/STL/BLK等)
+  - 优势: 完全免费，数据完整
+  - 时效性: 比赛结束后3-5分钟更新
+
+**🗃️ 数据生命周期管理策略**:
+
+**热数据存储 (Supabase 500MB限制)**:
+```sql
+-- 保留在数据库 (估算200-300MB)
+✅ 当前3-5个Gameweek的活跃数据
+✅ 球员基础信息和当前赛季统计  
+✅ 用户房间和阵容 (当前赛季)
+✅ 实时排行榜数据
+
+-- 定期清理目标
+❌ 3+ Gameweek前的详细比赛事件
+❌ 过期的临时缓存和统计
+❌ 非活跃房间的历史详情
+```
+
+**冷数据归档 (本地文件系统)**:
+```bash
+# 项目历史数据存档结构
+historical_data/
+├── gameweeks/
+│   ├── 2024-25_gw01.json    # 完整GW数据快照
+│   ├── 2024-25_gw02.json    # 比赛事件+统计
+│   └── 2024-25_gw03.json
+├── seasons/  
+│   └── 2023-24_final.json   # 整季汇总数据
+└── analytics/
+    └── player_performance.json # 分析用数据
+```
+
+**🔄 自动化数据管理流程**:
+
+```typescript
+// 每周数据生命周期任务
+async function weeklyDataMaintenance() {
+  // 1. 导出历史数据到本地JSON
+  const historicalData = await exportGameweekData(currentGW - 3);
+  await saveToLocalFile(`historical_data/gameweeks/2024-25_gw${currentGW-3}.json`);
+  
+  // 2. 清理数据库详细数据
+  await cleanupDetailedEvents(gameweeksBefore: 3);
+  await cleanupInactiveRooms(daysBefore: 30);
+  
+  // 3. 压缩历史文件
+  await compressHistoricalFiles();
+  
+  // 4. 数据库空间优化
+  await vacuumDatabase();
+}
+```
+
+**📊 API请求效率策略**:
+
+```bash
+# 请求频率控制
+FPL API: 无限制 → 实时监控比赛得分
+Football-Data: 10次/分钟 → 批量处理详细信息  
+balldontlie: 无限制 → 比赛结束后拉取box score
+
+# 单个Gameweek数据同步成本
+英超 (10场比赛): ~15次Football-Data请求
+NBA (15场比赛): ~15次balldontlie请求  
+总耗时: <10分钟完成整周数据同步
+```
+
+**🎯 数据同步时机**:
+
+```bash
+# Gameweek生命周期
+周五: 拉取新赛程和球员价格变动 (FPL)
+周末: 实时监控比赛得分更新 (FPL) 
+周一: 批量拉取详细比赛信息 (Football-Data)
+周二: 数据验证和清理任务执行
+```
+
+**💡 存储优化收益**:
+
+- **空间节约**: 历史数据压缩后减少80-90%空间占用
+- **查询性能**: 数据库只保留活跃数据，查询速度更快
+- **成本控制**: 始终保持在Supabase免费额度内
+- **数据完整性**: 历史数据永久保存在本地，可随时恢复
+
+**📈 预期数据规模**:
+
+```bash
+# 每个Gameweek数据量估算
+球员统计: ~600球员 × 50字段 ≈ 30KB
+比赛事件: ~10场比赛 × 100事件 ≈ 50KB  
+用户阵容: ~100用户 × 15球员 ≈ 15KB
+总计: ~100KB/Gameweek
+
+# 38个Gameweek总量: ~4MB (完全在限制内)
+# 历史数据压缩存储: ~1MB本地文件
+```
+
+这种混合存储策略确保了**数据完整性**、**成本控制**和**性能优化**的最佳平衡，为后续大规模用户增长做好了准备。
+
+**下一步**: 实施Supabase项目创建和数据同步机制开发。
+
+---
+*Last Updated: 2025-08-14 - Day 3 Complete: Backend + Data Strategy* 🏆
