@@ -42,11 +42,16 @@ export default function LeaguesPage() {
 
   const fetchRooms = async () => {
     try {
+      console.log('Fetching public rooms from API...'); // Debug log
       // For now, we'll fetch public rooms
       const response = await fetch('/api/rooms?public=true');
       const result = await response.json();
+      console.log('API response:', result); // Debug log
       if (result.success) {
         setRooms(result.data || []);
+        console.log('Rooms set:', result.data || []); // Debug log
+      } else {
+        console.error('API returned error:', result.error); // Debug log
       }
     } catch (error) {
       console.error('Failed to fetch rooms:', error);
@@ -64,47 +69,97 @@ export default function LeaguesPage() {
     }
 
     try {
+      const requestData = {
+        ...createForm,
+        createdBy: user.id
+      };
+      console.log('Creating room with data:', requestData); // Debug log
+      
       const response = await fetch('/api/rooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...createForm,
-          createdBy: user.id
-        })
+        body: JSON.stringify(requestData)
       });
       const result = await response.json();
+      console.log('Create room response:', result); // Debug log
+      
       if (result.success) {
         setShowCreateForm(false);
         setCreateForm({ name: '', description: '', max_players: 10, budget_limit: 100.0, is_public: false });
-        fetchRooms();
+        fetchRooms(); // Refresh the list
         alert(`房间创建成功！房间代码: ${result.data.room_code}`);
       } else {
         alert(`创建失败: ${result.error}`);
       }
     } catch (error) {
+      console.error('Create room error:', error); // Debug log
       alert('创建房间时出错');
     }
   };
 
   const joinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!user) {
+      alert('请先登录后再加入联赛');
+      return;
+    }
+
     try {
+      console.log('Joining room with code:', joinCode, 'userId:', user.id); // Debug log
       const response = await fetch('/api/rooms/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomCode: joinCode })
+        body: JSON.stringify({ 
+          roomCode: joinCode,
+          userId: user.id
+        })
       });
       const result = await response.json();
+      console.log('Join room response:', result); // Debug log
+      
       if (result.success) {
         setShowJoinForm(false);
         setJoinCode('');
-        fetchRooms();
-        alert('成功加入房间！');
+        fetchRooms(); // Refresh the list
+        alert(result.message || '成功加入联赛！');
       } else {
         alert(`加入失败: ${result.error}`);
       }
     } catch (error) {
-      alert('加入房间时出错');
+      console.error('Join room error:', error); // Debug log
+      alert('加入联赛时出错');
+    }
+  };
+
+  const joinRoomDirectly = async (roomCode: string, roomName: string) => {
+    if (!user) {
+      alert('请先登录后再加入联赛');
+      return;
+    }
+
+    try {
+      console.log('Directly joining room with code:', roomCode, 'userId:', user.id); // Debug log
+      const response = await fetch('/api/rooms/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          roomCode: roomCode,
+          userId: user.id
+        })
+      });
+      const result = await response.json();
+      console.log('Direct join room response:', result); // Debug log
+      
+      if (result.success) {
+        fetchRooms(); // Refresh the list
+        alert(result.message || `成功加入联赛 "${roomName}"！`);
+      } else {
+        alert(`加入失败: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Direct join room error:', error); // Debug log
+      alert('加入联赛时出错');
     }
   };
 
@@ -298,10 +353,15 @@ export default function LeaguesPage() {
                       size="sm" 
                       className="flex-1"
                       disabled={room.current_players >= room.max_players}
+                      onClick={() => joinRoomDirectly(room.room_code, room.name)}
                     >
                       {room.current_players >= room.max_players ? '已满员' : '加入'}
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => window.location.href = `/leagues/${room.id}`}
+                    >
                       查看详情
                     </Button>
                   </div>

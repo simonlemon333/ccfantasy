@@ -24,6 +24,9 @@ export default function Header() {
             <Link href="/players" className="text-gray-600 hover:text-blue-600 font-medium transition">
               球员市场
             </Link>
+            <Link href="/fixtures" className="text-gray-600 hover:text-blue-600 font-medium transition">
+              比赛赛程
+            </Link>
             <Link href="/leaderboard" className="text-gray-600 hover:text-blue-600 font-medium transition">
               排行榜
             </Link>

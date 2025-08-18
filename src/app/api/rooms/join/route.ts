@@ -61,6 +61,16 @@ export async function POST(request: NextRequest) {
 
         if (reactivateError) throw reactivateError;
 
+        // Update room current_players count
+        const { error: updateError } = await supabase
+          .from('rooms')
+          .update({ 
+            current_players: room.current_players + 1 
+          })
+          .eq('id', room.id);
+
+        if (updateError) throw updateError;
+
         return NextResponse.json({ 
           success: true, 
           data: room,
@@ -86,6 +96,16 @@ export async function POST(request: NextRequest) {
       }
       throw memberError;
     }
+
+    // Update room current_players count
+    const { error: updateError } = await supabase
+      .from('rooms')
+      .update({ 
+        current_players: room.current_players + 1 
+      })
+      .eq('id', room.id);
+
+    if (updateError) throw updateError;
 
     // Get updated room data with member info
     const { data: updatedRoom, error: fetchError } = await supabase

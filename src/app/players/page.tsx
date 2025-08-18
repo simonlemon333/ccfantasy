@@ -19,13 +19,24 @@ interface Player {
     name: string;
     short_name: string;
     primary_color: string;
-  };
+  } | null;
+}
+
+interface Team {
+  id: string;
+  name: string;
+  short_name: string;
+  logo_url?: string;
+  primary_color?: string;
 }
 
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
+  const [teamsLoading, setTeamsLoading] = useState(true);
   const [selectedPosition, setSelectedPosition] = useState<string>('ALL');
+  const [selectedTeam, setSelectedTeam] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('total_points');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPlayers, setTotalPlayers] = useState(0);
@@ -34,7 +45,26 @@ export default function PlayersPage() {
 
   useEffect(() => {
     fetchPlayers();
-  }, [currentPage, selectedPosition, sortBy]);
+  }, [currentPage, selectedPosition, selectedTeam, sortBy]);
+
+  useEffect(() => {
+    fetchTeams();
+  }, []);
+
+  const fetchTeams = async () => {
+    try {
+      setTeamsLoading(true);
+      const response = await fetch('/api/teams');
+      const result = await response.json();
+      if (result.success) {
+        setTeams(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch teams:', error);
+    } finally {
+      setTeamsLoading(false);
+    }
+  };
 
   const fetchPlayers = async () => {
     try {
@@ -49,6 +79,10 @@ export default function PlayersPage() {
       
       if (selectedPosition !== 'ALL') {
         params.append('position', selectedPosition);
+      }
+      
+      if (selectedTeam !== 'ALL') {
+        params.append('team', selectedTeam);
       }
       
       const response = await fetch(`/api/players?${params}`);
@@ -95,6 +129,26 @@ export default function PlayersPage() {
         <Card className="mb-8">
           <div className="flex flex-wrap gap-4 items-center justify-between">
             <div className="flex flex-wrap gap-4 items-center">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">球队筛选</label>
+                <select 
+                  value={selectedTeam} 
+                  onChange={(e) => {
+                    setSelectedTeam(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 min-w-[140px]"
+                  disabled={teamsLoading}
+                >
+                  <option value="ALL">全部球队</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.short_name}>
+                      {team.short_name} - {team.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">位置筛选</label>
                 <select 
