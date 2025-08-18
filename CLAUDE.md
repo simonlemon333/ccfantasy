@@ -105,6 +105,19 @@ interface ApiResponse<T> {
 - Cold data: Historical gameweeks archived to local JSON files
 - Automatic cleanup: Weekly exports and database maintenance
 
+**Critical Data Integrity Fixes (2025-08-18)**:
+- **Team Mapping Resolution**: Fixed fundamental team mapping issues between Football-Data.org API and database
+- **Algorithm Improvement**: Prioritize short_name matching over complex name algorithms for 100% mapping success
+- **Complete Fixtures Restoration**: Successfully restored all 380 Premier League fixtures (38 gameweeks × 10 matches)
+- **Manchester Teams Fix**: Resolved missing Manchester United/City fixtures through improved mapping logic
+
+**Debugging Tools Created**:
+- `/api/admin/debug-team-mapping` - Comprehensive team mapping analysis
+- `/api/admin/debug-manchester-mapping` - Manchester teams specific debugging
+- `/api/admin/fix-team-mapping` - Automated team mapping corrections
+- `/api/admin/restore-fixtures-fixed` - Improved fixtures restoration with zero data loss
+- `/api/admin/check-teams` - Real-time database team status verification
+
 ### Development Notes
 
 **TypeScript Configuration**:
@@ -141,6 +154,59 @@ interface ApiResponse<T> {
 - Complete database schema types in `database.types.ts`
 - API route parameters and responses fully typed
 - Validation functions with TypeScript interfaces
+- **External API Integration Types**: Strongly typed Football-Data.org API responses and mapping functions
+
+### Critical System Fixes & Improvements
+
+**Team Mapping Crisis Resolution (2025-08-18)**:
+This section documents a critical data integrity issue discovered and resolved, serving as reference for future debugging and system improvements.
+
+**Problem**: User reported "曼联没有比赛" (Manchester United has no fixtures), "切尔西映射了两场" (Chelsea mapped twice), "每轮都少一场" (each round missing one match).
+
+**Root Cause**: Team mapping algorithm in fixtures restoration prioritized complex name matching over simple short_name matching, causing:
+- "Manchester United FC" → "Man Utd" mapping failures
+- "Nottingham Forest FC" → "Nott'm Forest" mismatches  
+- Extra teams in database (Leicester, Ipswich, Southampton) causing confusion
+
+**Solution Implemented**:
+```typescript
+// Before: Complex name matching (unreliable)
+const findTeamId = (teamName: string) => {
+  // Priority 1: Full name match - often fails
+  // Priority 2: Partial name match - unreliable
+  // Priority 3: Short name match - should be Priority 1
+}
+
+// After: Short name priority matching (100% reliable)
+const findTeamId = (teamName: string, teamShortName?: string) => {
+  // Priority 1: Direct short name match - most reliable
+  if (teamShortName) {
+    const team = dbTeams?.find(t => t.short_name === teamShortName);
+    if (team) return team.id;
+  }
+  // Priority 2-4: Fallback matching strategies
+}
+```
+
+**Results Achieved**:
+- ✅ 380 fixtures restored (100% success rate, 0 skipped)
+- ✅ All 20 Premier League teams with exactly 38 fixtures each
+- ✅ Manchester United/City fixtures fully restored (74 total Manchester fixtures)
+- ✅ Perfect team mapping: 20/20 Football-Data.org teams successfully matched
+
+**Administrative Tools Created**:
+```bash
+# Debugging & Analysis Tools
+/api/admin/debug-team-mapping          # Full team mapping analysis
+/api/admin/debug-manchester-mapping    # Manchester teams specific debug
+/api/admin/check-teams                 # Database team status verification
+
+# Resolution & Restoration Tools  
+/api/admin/fix-team-mapping            # Automated mapping corrections
+/api/admin/restore-fixtures-fixed      # Improved zero-loss fixtures restoration
+```
+
+**Key Learning**: User feedback like "这个id真的好不方便啊" (these IDs are really inconvenient) often points to fundamental architectural issues. The UUID complexity vs simple short_name debate reflects broader usability vs "standard practice" tensions in system design.
 
 ### Project Goals
 
