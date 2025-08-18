@@ -103,12 +103,23 @@ export default function FixturesPage() {
       const result = await response.json();
       
       if (result.success) {
-        setFixtureEvents(result.data || []);
+        // 将API返回的timeline转换为页面期望的格式
+        const events = result.data.timeline?.map((event: any) => ({
+          id: event.id,
+          player_name: event.player.name,
+          team_name: event.player.team,
+          event_type: event.eventType,
+          minute: event.minute,
+          points: event.points
+        })) || [];
+        setFixtureEvents(events);
       } else {
         console.error('Failed to fetch fixture events:', result.error);
+        setFixtureEvents([]);
       }
     } catch (error) {
       console.error('Error fetching fixture events:', error);
+      setFixtureEvents([]);
     } finally {
       setLoadingEvents(false);
     }

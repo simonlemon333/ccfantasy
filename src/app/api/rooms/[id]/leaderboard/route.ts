@@ -1,176 +1,176 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// GET /api/rooms/[id]/leaderboard - Get league leaderboard with lineups
+// GET /api/rooms/[id]/leaderboard - 获取房间排行榜和参与队伍
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id: roomId } = await params;
-    const { searchParams } = new URL(request.url);
-    const gameweek = searchParams.get('gameweek');
-
-    console.log('GET /api/rooms/[id]/leaderboard:', { roomId, gameweek });
-
-    // First check how many lineups exist for this room
-    const { data: allLineups, error: checkError } = await supabase
-      .from('lineups')
-      .select('id, room_id, user_id, gameweek, is_submitted, total_points')
-      .eq('room_id', roomId);
-
-    console.log('All lineups for room:', allLineups);
-    console.log('Submitted lineups:', allLineups?.filter(l => l.is_submitted));
     
-    // Also check all lineups in database for debugging
-    const { data: allLineupsInDB } = await supabase
-      .from('lineups')
-      .select('id, room_id, user_id, gameweek, is_submitted, total_points')
-      .limit(20);
-    
-    console.log('All lineups in database (last 20):', allLineupsInDB);
+    console.log(`获取房间 ${roomId} 的排行榜信息...`);
 
-    // Try a simpler query first
-    let simpleQuery = supabase
-      .from('lineups')
-      .select(`
-        id,
-        user_id,
-        gameweek,
-        total_points,
-        gameweek_points,
-        formation,
-        captain_id,
-        vice_captain_id,
-        total_cost,
-        is_submitted,
-        submitted_at
-      `)
-      .eq('room_id', roomId)
-      .eq('is_submitted', true)
-      .order('total_points', { ascending: false });
-
-    const { data: simpleLineups, error: simpleError } = await simpleQuery;
-    console.log('Simple query result:', { 
-      found: simpleLineups?.length || 0, 
-      error: simpleError?.message,
-      lineups: simpleLineups 
-    });
-
-    // Get all lineups for the room (current gameweek if not specified)
-    let query = supabase
-      .from('lineups')
-      .select(`
-        id,
-        user_id,
-        gameweek,
-        total_points,
-        gameweek_points,
-        formation,
-        captain_id,
-        vice_captain_id,
-        total_cost,
-        is_submitted,
-        submitted_at,
-        users(id, username, display_name, avatar_url),
-        lineup_players(
-          id,
-          player_id,
-          position,
-          is_starter,
-          is_captain,
-          is_vice_captain,
-          points_scored,
-          players(
-            id,
-            name,
-            position,
-            price,
-            total_points,
-            photo_url,
-            teams(short_name, name, primary_color)
-          )
-        )
-      `)
-      .eq('room_id', roomId)
-      .eq('is_submitted', true)  // Only show submitted lineups
-      .order('total_points', { ascending: false });
-
-    if (gameweek) {
-      query = query.eq('gameweek', parseInt(gameweek));
-    }
-
-    const { data: lineups, error } = await query;
-
-    console.log('Leaderboard query result:', { 
-      lineupsFound: lineups?.length || 0, 
-      error: error?.message,
-      firstLineup: lineups?.[0]
-    });
-
-    if (error) {
-      console.error('Error fetching leaderboard:', error);
-      // Don't throw, let's see what we can salvage
-    }
-
-    // Get room info for current gameweek
+    // 获取房间基本信息
     const { data: room, error: roomError } = await supabase
       .from('rooms')
-      .select('id, gameweek, name')
+      .select('*')
       .eq('id', roomId)
       .single();
 
-    if (roomError) {
-      console.error('Error fetching room:', roomError);
-      throw roomError;
+    if (roomError || !room) {
+      return NextResponse.json({
+        success: false,
+        error: '房间不存在'
+      }, { status: 404 });
     }
 
-    // If no specific gameweek requested, use room's current gameweek
-    const currentGameweek = gameweek ? parseInt(gameweek) : room.gameweek;
+    // 获取房间成员和他们的阵容
+    const { data: roomMembers, error: membersError } = await supabase
+      .from('room_members')
+      .select(`
+        user_id,
+        joined_at,
+        is_active
+      `)
+      .eq('room_id', roomId)
+      .eq('is_active', true);
 
-    // Filter lineups for the target gameweek
-    const gameweekLineups = lineups?.filter(lineup => lineup.gameweek === currentGameweek) || [];
+    if (membersError) {
+      console.error('获取房间成员错误:', membersError);
+    }
 
-    // Sort by total points (descending) then by submission time
-    const sortedLineups = gameweekLineups.sort((a, b) => {
-      if (b.total_points !== a.total_points) {
-        return b.total_points - a.total_points;
+    console.log(`房间 ${roomId} 有 ${roomMembers?.length || 0} 个成员`);
+
+    // 获取每个成员的阵容和积分
+    const memberLineups = [];
+    
+    if (roomMembers && roomMembers.length > 0) {
+      for (const member of roomMembers) {
+        try {
+          // 获取用户基本信息 (模拟用户系统)
+          const mockUser = {
+            id: member.user_id,
+            username: `用户${member.user_id.substring(0, 8)}`,
+            email: `user${member.user_id.substring(0, 8)}@fantasy.com`
+          };
+
+          // 获取用户在这个房间的阵容
+          const { data: lineups, error: lineupError } = await supabase
+            .from('lineups')
+            .select(`
+              *,
+              lineup_players(
+                player_id,
+                is_starter,
+                is_captain,
+                is_vice_captain,
+                players(
+                  name,
+                  position,
+                  total_points,
+                  teams(name, short_name)
+                )
+              )
+            `)
+            .eq('user_id', member.user_id)
+            .eq('room_id', roomId)
+            .eq('gameweek', room.gameweek || 1)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (lineupError) {
+            console.error(`获取用户 ${member.user_id} 阵容错误:`, lineupError);
+          }
+
+          const currentLineup = lineups?.[0];
+          
+          // 计算总积分
+          let totalPoints = 0;
+          if (currentLineup?.lineup_players) {
+            totalPoints = currentLineup.lineup_players.reduce((sum, lp) => {
+              const playerPoints = lp.players?.total_points || 0;
+              const multiplier = lp.is_captain ? 2 : 1; // 队长2倍积分
+              return sum + (playerPoints * multiplier);
+            }, 0);
+          }
+
+          memberLineups.push({
+            user: mockUser,
+            lineup: currentLineup,
+            totalPoints,
+            playerCount: currentLineup?.lineup_players?.length || 0,
+            starterCount: currentLineup?.lineup_players?.filter(lp => lp.is_starter).length || 0,
+            captain: currentLineup?.lineup_players?.find(lp => lp.is_captain)?.players?.name || null,
+            joinedAt: member.joined_at
+          });
+
+        } catch (memberError) {
+          console.error(`处理成员 ${member.user_id} 数据错误:`, memberError);
+          
+          // 即使处理失败也要显示基本用户信息
+          memberLineups.push({
+            user: {
+              id: member.user_id,
+              username: `用户${member.user_id.substring(0, 8)}`,
+              email: `user${member.user_id.substring(0, 8)}@fantasy.com`
+            },
+            lineup: null,
+            totalPoints: 0,
+            playerCount: 0,
+            starterCount: 0,
+            captain: null,
+            joinedAt: member.joined_at,
+            error: '无法加载阵容数据'
+          });
+        }
       }
-      // If points are equal, earlier submission wins
-      if (a.submitted_at && b.submitted_at) {
-        return new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime();
-      }
-      return 0;
+    }
+
+    // 按积分排序
+    memberLineups.sort((a, b) => b.totalPoints - a.totalPoints);
+
+    // 添加排名
+    memberLineups.forEach((member, index) => {
+      member.rank = index + 1;
     });
 
-    // Add ranking
-    const leaderboard = sortedLineups.map((lineup, index) => ({
-      ...lineup,
-      rank: index + 1
-    }));
+    // 统计信息
+    const stats = {
+      totalMembers: memberLineups.length,
+      membersWithLineups: memberLineups.filter(m => m.lineup).length,
+      averagePoints: memberLineups.length > 0 
+        ? Math.round(memberLineups.reduce((sum, m) => sum + m.totalPoints, 0) / memberLineups.length)
+        : 0,
+      highestPoints: memberLineups.length > 0 ? memberLineups[0].totalPoints : 0,
+      currentGameweek: room.gameweek || 1
+    };
 
     return NextResponse.json({
       success: true,
       data: {
-        leaderboard,
-        gameweek: currentGameweek,
-        roomName: room.name,
-        totalEntries: leaderboard.length,
-        debug: {
-          totalLineupsInRoom: allLineups?.length || 0,
-          submittedLineups: allLineups?.filter(l => l.is_submitted)?.length || 0,
-          lineupsForGameweek: gameweekLineups.length,
-          requestedGameweek: gameweek,
-          roomCurrentGameweek: room.gameweek
-        }
-      }
+        room: {
+          id: room.id,
+          name: room.name,
+          description: room.description,
+          roomCode: room.room_code,
+          maxPlayers: room.max_players,
+          currentPlayers: room.current_players,
+          gameweek: room.gameweek || 1,
+          budgetLimit: room.budget_limit,
+          isActive: room.is_active
+        },
+        leaderboard: memberLineups,
+        stats
+      },
+      message: `获取房间 ${room.name} 排行榜成功`
     });
 
   } catch (error) {
-    console.error('Error fetching leaderboard:', error);
+    console.error('获取房间排行榜错误:', error);
     return NextResponse.json({
       success: false,
-      error: 'Failed to fetch leaderboard'
+      error: error instanceof Error ? error.message : '获取排行榜失败'
     }, { status: 500 });
   }
 }
