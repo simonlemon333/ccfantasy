@@ -1,6 +1,7 @@
 import Layout from '../components/Layout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import Link from 'next/link';
 
 export default function HomePage() {
   return (
@@ -16,8 +17,45 @@ export default function HomePage() {
             组建你的梦幻球队，与朋友竞技，体验最刺激的足球经理游戏
           </p>
           <div className="flex justify-center space-x-4">
-            <Button size="lg">开始游戏</Button>
-            <Button variant="outline" size="lg">了解更多</Button>
+            <Link href="/my-team">
+              <Button size="lg">开始游戏</Button>
+            </Link>
+            <Link href="/leagues">
+              <Button variant="outline" size="lg">加入联赛</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Game Flow Guide */}
+      <section className="bg-blue-50 py-16">
+        <div className="container mx-auto px-6">
+          <h3 className="text-3xl font-bold text-center text-gray-800 mb-12">如何开始游戏</h3>
+          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">1</div>
+              <h4 className="text-xl font-bold text-gray-800 mb-3">组建阵容</h4>
+              <p className="text-gray-600 mb-4">前往"我的球队"选择11名球员组成你的阵容，设置队长和副队长</p>
+              <Link href="/my-team">
+                <Button variant="outline" size="sm">去组建阵容</Button>
+              </Link>
+            </div>
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">2</div>
+              <h4 className="text-xl font-bold text-gray-800 mb-3">加入联赛</h4>
+              <p className="text-gray-600 mb-4">加入公开联赛或创建私人联赛与朋友一起比赛</p>
+              <Link href="/leagues">
+                <Button variant="outline" size="sm">去加入联赛</Button>
+              </Link>
+            </div>
+            <div className="text-center">
+              <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4">3</div>
+              <h4 className="text-xl font-bold text-gray-800 mb-3">提交阵容</h4>
+              <p className="text-gray-600 mb-4">在联赛中正式提交你的阵容，开始竞技并获得积分</p>
+              <Link href="/my-team/squad">
+                <Button variant="outline" size="sm">去提交阵容</Button>
+              </Link>
+            </div>
           </div>
         </div>
       </section>

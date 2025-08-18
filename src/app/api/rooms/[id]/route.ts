@@ -9,17 +9,12 @@ export async function GET(
   try {
     const { id } = await params;
 
+    // Get room basic info first
     const { data: room, error } = await supabase
       .from('rooms')
       .select(`
         *,
-        users!rooms_created_by_fkey(id, username, display_name),
-        room_members(
-          user_id,
-          joined_at,
-          is_active,
-          users(id, username, display_name, avatar_url)
-        )
+        users!rooms_created_by_fkey(id, username, display_name)
       `)
       .eq('id', id)
       .single();
@@ -34,9 +29,32 @@ export async function GET(
       throw error;
     }
 
+    // Get room members separately to ensure proper joins
+    const { data: roomMembers, error: membersError } = await supabase
+      .from('room_members')
+      .select(`
+        user_id,
+        joined_at,
+        is_active,
+        users!inner(id, username, display_name, avatar_url)
+      `)
+      .eq('room_id', id)
+      .eq('is_active', true);
+
+    if (membersError) {
+      console.error('Error fetching room members:', membersError);
+      // Don't fail the whole request, just log the error
+    }
+
+    // Combine the data
+    const roomWithMembers = {
+      ...room,
+      room_members: roomMembers || []
+    };
+
     return NextResponse.json({ 
       success: true, 
-      data: room 
+      data: roomWithMembers 
     });
 
   } catch (error) {

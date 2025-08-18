@@ -10,6 +10,16 @@ export async function GET(request: NextRequest) {
 
     if (isPublic) {
       // Get public rooms
+      console.log('Fetching public rooms...'); // Debug log
+      
+      // First, let's check all rooms to see what we have
+      const { data: allRooms, error: allError } = await supabase
+        .from('rooms')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      console.log('All rooms in database:', allRooms); // Debug log
+      
       const { data: rooms, error } = await supabase
         .from('rooms')
         .select(`
@@ -21,11 +31,13 @@ export async function GET(request: NextRequest) {
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
+      console.log('Public rooms query result:', { rooms, error }); // Debug log
+
       if (error) throw error;
 
       return NextResponse.json({ 
         success: true, 
-        data: rooms 
+        data: rooms || []
       });
     }
 
@@ -68,7 +80,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, createdBy, maxPlayers = 10, isPublic = false, budgetLimit = 100.0 } = body;
+    console.log('Create room request body:', body); // Debug log
+    const { 
+      name, 
+      description, 
+      createdBy, 
+      max_players: maxPlayers = 10, 
+      is_public: isPublic = false, 
+      budget_limit: budgetLimit = 100.0 
+    } = body;
 
     // Validation
     if (!name || !createdBy) {

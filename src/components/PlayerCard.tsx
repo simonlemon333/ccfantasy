@@ -7,6 +7,7 @@ interface Team {
   name: string;
   short_name: string;
   primary_color: string;
+  logo_url?: string;
 }
 
 export interface PlayerProps {
@@ -18,7 +19,7 @@ export interface PlayerProps {
   total_points: number;
   goals: number;
   assists: number;
-  teams: Team;
+  teams: Team | null;
 }
 
 const getPositionColor = (position: string) => {
@@ -43,7 +44,19 @@ export default function PlayerCard(player: PlayerProps) {
           />
           <div>
             <h3 className="text-lg font-bold text-gray-800">{player.name}</h3>
-            <p className="text-sm text-gray-600">{player.teams.name}</p>
+            <div className="flex items-center space-x-2">
+              {player.teams?.logo_url && (
+                <img
+                  src={player.teams.logo_url}
+                  alt={player.teams.short_name}
+                  className="w-4 h-4 object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              )}
+              <p className="text-sm text-gray-600">{player.teams?.name || '未知球队'}</p>
+            </div>
           </div>
         </div>
         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPositionColor(player.position)}`}>

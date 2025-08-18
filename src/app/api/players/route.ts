@@ -17,6 +17,17 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
+    // Get team ID if team filter is provided
+    let teamData = null;
+    if (team) {
+      const { data } = await supabase
+        .from('teams')
+        .select('id')
+        .eq('short_name', team.toUpperCase())
+        .single();
+      teamData = data;
+    }
+
     // Build query
     let query = supabase
       .from('players')
@@ -24,11 +35,12 @@ export async function GET(request: NextRequest) {
         *,
         teams(id, name, short_name, logo_url, primary_color)
       `)
-      .eq('is_available', true);
+      .eq('is_available', true)
+      .not('team_id', 'is', null);
 
     // Apply filters
-    if (team) {
-      query = query.eq('teams.short_name', team.toUpperCase());
+    if (team && teamData) {
+      query = query.eq('team_id', teamData.id);
     }
 
     if (position) {
@@ -73,11 +85,37 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Get total count for pagination
-    const { count: totalCount } = await supabase
+    // Get total count for pagination with same filters
+    let countQuery = supabase
       .from('players')
       .select('*', { count: 'exact', head: true })
-      .eq('is_available', true);
+      .eq('is_available', true)
+      .not('team_id', 'is', null);
+
+    // Apply same filters for count
+    if (team && teamData) {
+      countQuery = countQuery.eq('team_id', teamData.id);
+    }
+    if (position) {
+      countQuery = countQuery.eq('position', position.toUpperCase());
+    }
+    if (minPrice) {
+      const min = parseFloat(minPrice);
+      if (!isNaN(min)) {
+        countQuery = countQuery.gte('price', min);
+      }
+    }
+    if (maxPrice) {
+      const max = parseFloat(maxPrice);
+      if (!isNaN(max)) {
+        countQuery = countQuery.lte('price', max);
+      }
+    }
+    if (search) {
+      countQuery = countQuery.ilike('name', `%${search}%`);
+    }
+
+    const { count: totalCount } = await countQuery;
 
     return NextResponse.json({
       success: true,

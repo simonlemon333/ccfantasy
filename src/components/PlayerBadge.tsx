@@ -145,6 +145,10 @@ export default function PlayerBadge({
             {teamLabel}
           </div>
         )}
+        {/* Points display */}
+        <div className="mt-0.5 text-[10px] bg-green-100 text-green-800 px-1 py-0.5 rounded font-bold">
+          {player.total_points ?? 0}分
+        </div>
       </div>
 
       {/* Remove button */}

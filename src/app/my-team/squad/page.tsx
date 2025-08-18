@@ -539,19 +539,56 @@ export default function SquadPage() {
   };
 
   const autofillSquad = () => {
-    // Simple autofill: pick cheapest available players per position to meet formation
-    // Only uses currently fetched `players` list
+    // Enhanced autofill: pick cheapest available players per position while respecting team limits (max 3 per team)
     const picks: SquadPlayer[] = [];
     const takenIds = new Set<string>();
+    const teamCounts = new Map<string, number>(); // track players per team
 
-    // GK: need 1
-    const gk = players.filter(p => p.position === 'GK' && !takenIds.has(p.id)).sort((a,b)=>a.price-b.price)[0];
-    if (gk) { takenIds.add(gk.id); picks.push({ ...gk, is_starter: true, is_captain: false, is_vice_captain: false }); }
+    // Helper function to check if we can add a player from their team
+    const canAddFromTeam = (player: any) => {
+      const teamName = player.teams?.short_name || player.teams?.name || 'Unknown';
+      const currentCount = teamCounts.get(teamName) || 0;
+      return currentCount < 3;
+    };
+
+    // Helper function to add a player and update team count
+    const addPlayer = (player: any, isStarter: boolean = true) => {
+      const teamName = player.teams?.short_name || player.teams?.name || 'Unknown';
+      const currentCount = teamCounts.get(teamName) || 0;
+      teamCounts.set(teamName, currentCount + 1);
+      takenIds.add(player.id);
+      picks.push({ 
+        ...player, 
+        is_starter: isStarter, 
+        is_captain: false, 
+        is_vice_captain: false 
+      });
+    };
+
+    // GK: need 1 (cheapest available that respects team limits)
+    const gkCandidates = players
+      .filter(p => p.position === 'GK' && !takenIds.has(p.id))
+      .sort((a, b) => a.price - b.price);
+    
+    for (const gk of gkCandidates) {
+      if (canAddFromTeam(gk)) {
+        addPlayer(gk);
+        break;
+      }
+    }
 
     const pickByPos = (pos: 'DEF'|'MID'|'FWD', count: number) => {
-      const candidates = players.filter(p => p.position === pos && !takenIds.has(p.id)).sort((a,b)=>a.price-b.price);
-      for (let i=0;i<count && i<candidates.length;i++) {
-        const c = candidates[i]; takenIds.add(c.id); picks.push({ ...c, is_starter: true, is_captain: false, is_vice_captain:false });
+      const candidates = players
+        .filter(p => p.position === pos && !takenIds.has(p.id))
+        .sort((a, b) => a.price - b.price);
+      
+      let picked = 0;
+      for (const candidate of candidates) {
+        if (picked >= count) break;
+        if (canAddFromTeam(candidate)) {
+          addPlayer(candidate);
+          picked++;
+        }
       }
     };
 
@@ -559,32 +596,79 @@ export default function SquadPage() {
     pickByPos('MID', formation.mid);
     pickByPos('FWD', formation.fwd);
 
-    // If picks < 11 because of missing players, fill with cheapest others
+    // If picks < 11 because of missing players or team limits, fill with cheapest others
     if (picks.length < 11) {
-      const others = players.filter(p => !takenIds.has(p.id)).sort((a,b)=>a.price-b.price);
-      for (let i=0; i<others.length && picks.length<11; i++) { const o = others[i]; takenIds.add(o.id); picks.push({ ...o, is_starter:true, is_captain:false, is_vice_captain:false }); }
-    }
-
-    // Calculate total cost and ensure within budget; if over budget, trim expensive players
-    let total = picks.reduce((s,p)=>s + p.price, 0);
-    if (total > budget) {
-      // remove most expensive until within budget (heuristic)
-      picks.sort((a,b)=>b.price-a.price);
-      while (picks.length > 0 && picks.reduce((s,p)=>s+p.price,0) > budget) {
-        picks.pop();
-      }
-      // Fill again with cheapest available within budget
-      const rem = players.filter(p => !takenIds.has(p.id)).sort((a,b)=>a.price-b.price);
-      for (const r of rem) {
-        const curTotal = picks.reduce((s,p)=>s+p.price,0);
-        if (picks.length < 11 && curTotal + r.price <= budget) {
-          picks.push({ ...r, is_starter:true, is_captain:false, is_vice_captain:false });
-        }
+      const others = players
+        .filter(p => !takenIds.has(p.id))
+        .sort((a, b) => a.price - b.price);
+      
+      for (const other of others) {
         if (picks.length >= 11) break;
+        if (canAddFromTeam(other)) {
+          addPlayer(other);
+        }
       }
     }
 
-    setSquad(picks.slice(0,11));
+    // Calculate total cost and ensure within budget; if over budget, replace expensive players
+    let total = picks.reduce((s, p) => s + p.price, 0);
+    if (total > budget) {
+      // Sort picks by price (most expensive first) but keep team constraints
+      const expensiveFirst = [...picks].sort((a, b) => b.price - a.price);
+      
+      for (let i = 0; i < expensiveFirst.length && total > budget; i++) {
+        const expensivePlayer = expensiveFirst[i];
+        const playerIndex = picks.findIndex(p => p.id === expensivePlayer.id);
+        if (playerIndex === -1) continue;
+        
+        // Try to find a cheaper replacement from a different team or same team if allowed
+        const replacements = players
+          .filter(p => 
+            p.position === expensivePlayer.position && 
+            !takenIds.has(p.id) && 
+            p.price < expensivePlayer.price
+          )
+          .sort((a, b) => a.price - b.price);
+        
+        for (const replacement of replacements) {
+          // Remove the expensive player first to check team count
+          const expensiveTeam = expensivePlayer.teams?.short_name || expensivePlayer.teams?.name || 'Unknown';
+          teamCounts.set(expensiveTeam, (teamCounts.get(expensiveTeam) || 1) - 1);
+          
+          if (canAddFromTeam(replacement)) {
+            // Replace the expensive player
+            picks[playerIndex] = { 
+              ...replacement, 
+              is_starter: expensivePlayer.is_starter, 
+              is_captain: false, 
+              is_vice_captain: false 
+            };
+            takenIds.delete(expensivePlayer.id);
+            takenIds.add(replacement.id);
+            
+            const replacementTeam = replacement.teams?.short_name || replacement.teams?.name || 'Unknown';
+            teamCounts.set(replacementTeam, (teamCounts.get(replacementTeam) || 0) + 1);
+            
+            total = picks.reduce((s, p) => s + p.price, 0);
+            break;
+          } else {
+            // Restore the expensive player's team count
+            teamCounts.set(expensiveTeam, (teamCounts.get(expensiveTeam) || 0) + 1);
+          }
+        }
+      }
+    }
+
+    // Ensure we don't exceed 11 players
+    const finalSquad = picks.slice(0, 11);
+    
+    console.log('Autofill completed:', {
+      totalPlayers: finalSquad.length,
+      totalCost: finalSquad.reduce((s, p) => s + p.price, 0),
+      teamCounts: Object.fromEntries(teamCounts.entries())
+    });
+
+    setSquad(finalSquad);
   };
 
   const removePlayerFromSquad = (playerId: string) => {
