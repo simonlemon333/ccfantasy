@@ -2,24 +2,18 @@
 
 import React from 'react';
 import Card from './ui/Card';
-
-interface Team {
-  name: string;
-  short_name: string;
-  primary_color: string;
-  logo_url?: string;
-}
+import { TEAM_INFO_MAP } from '@/lib/teamHelpers';
 
 export interface PlayerProps {
   id: string;
   name: string;
   position: 'GK' | 'DEF' | 'MID' | 'FWD';
+  team: string;
   photo_url?: string | null;
   price: number;
   total_points: number;
   goals: number;
   assists: number;
-  teams: Team | null;
 }
 
 const getPositionColor = (position: string) => {
@@ -33,6 +27,8 @@ const getPositionColor = (position: string) => {
 };
 
 export default function PlayerCard(player: PlayerProps) {
+  const teamInfo = TEAM_INFO_MAP[player.team];
+
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <div className="flex items-start justify-between mb-4">
@@ -45,17 +41,17 @@ export default function PlayerCard(player: PlayerProps) {
           <div>
             <h3 className="text-lg font-bold text-gray-800">{player.name}</h3>
             <div className="flex items-center space-x-2">
-              {player.teams?.logo_url && (
+              {teamInfo?.logo_url && (
                 <img
-                  src={player.teams.logo_url}
-                  alt={player.teams.short_name}
+                  src={teamInfo.logo_url}
+                  alt={teamInfo.short_name}
                   className="w-4 h-4 object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                   }}
                 />
               )}
-              <p className="text-sm text-gray-600">{player.teams?.name || '未知球队'}</p>
+              <p className="text-sm text-gray-600">{teamInfo?.name || '未知球队'}</p>
             </div>
           </div>
         </div>
