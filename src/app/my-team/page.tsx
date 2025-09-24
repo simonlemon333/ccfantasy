@@ -48,6 +48,20 @@ interface JoinedRoom {
   joined_at: string;
 }
 
+interface Fixture {
+  id: string;
+  gameweek: number;
+  kickoff_time: string;
+  home_team: {
+    name: string;
+    short_name: string;
+  };
+  away_team: {
+    name: string;
+    short_name: string;
+  };
+}
+
 const FORMATIONS = [
   { name: '4-4-2', def: 4, mid: 4, fwd: 2 },
   { name: '4-3-3', def: 4, mid: 3, fwd: 3 },
@@ -63,11 +77,10 @@ export default function MyTeamPage() {
   const [lineups, setLineups] = useState<LineupData[]>([]);
   const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
   const [selectedLineupData, setSelectedLineupData] = useState<LineupData | null>(null);
-  const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [selectedLineupForSubmit, setSelectedLineupForSubmit] = useState<LineupData | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [localDraft, setLocalDraft] = useState<LineupData | null>(null);
+  const [currentGameweek, setCurrentGameweek] = useState(1);
+  const [upcomingMatches, setUpcomingMatches] = useState<Fixture[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -81,7 +94,8 @@ export default function MyTeamPage() {
       await Promise.all([
         loadLocalDraft(),
         fetchLineups(),
-        fetchJoinedRooms()
+        fetchJoinedRooms(),
+        fetchCurrentGameweek()
       ]);
       
       setLoading(false);
@@ -115,7 +129,7 @@ export default function MyTeamPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token || null;
-      
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
@@ -125,7 +139,7 @@ export default function MyTeamPage() {
 
       const response = await fetch('/api/rooms/joined', { headers });
       const result = await response.json();
-      
+
       if (result.success) {
         setJoinedRooms(result.data || []);
       } else {
@@ -133,6 +147,23 @@ export default function MyTeamPage() {
       }
     } catch (error) {
       console.error('Error fetching joined rooms:', error);
+    }
+  };
+
+  const fetchCurrentGameweek = async () => {
+    try {
+      const response = await fetch('/api/fixtures?limit=10');
+      const result = await response.json();
+      if (result.success) {
+        const fixtures = result.data || [];
+        if (fixtures.length > 0) {
+          const currentGW = fixtures[0].gameweek || 1;
+          setCurrentGameweek(currentGW);
+          setUpcomingMatches(fixtures.slice(0, 5)); // Show next 5 matches
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching current gameweek:', error);
     }
   };
 
@@ -199,7 +230,7 @@ export default function MyTeamPage() {
 
         setLineups(mapped);
         console.log('Mapped lineups:', mapped);
-        console.log('Lineup IDs:', mapped.map(l => ({ id: l.id, formation: l.formation, isDraft: l.isDraft })));
+        console.log('Lineup IDs:', mapped.map((l: LineupData) => ({ id: l.id, formation: l.formation, isDraft: l.isDraft })));
       } else {
         console.log('No lineups found or API failed:', result);
       }
@@ -208,136 +239,7 @@ export default function MyTeamPage() {
     }
   };
 
-  const handleLockDraft = async (lineup: LineupData) => {
-    if (!user) return;
-    if (lineup.id) {
-      alert('这个阵容已经锁定到服务器了');
-      return;
-    }
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token || null;
-      
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-
-      // Convert lineup data to API format
-      const playerSelections = lineup.players.map(player => ({
-        id: player.id,
-        position: player.position,
-        team_id: player.teams?.name || '', 
-        price: player.price,
-        is_starter: player.is_starter,
-        is_captain: player.is_captain,
-        is_vice_captain: player.is_vice_captain
-      }));
-
-      const captain = lineup.players.find(p => p.is_captain);
-      const viceCaptain = lineup.players.find(p => p.is_vice_captain);
-
-      console.log('Locking draft to server:', {
-        userId: user.id,
-        players: playerSelections.length,
-        formation: lineup.formation,
-        captainId: captain?.id,
-        viceCaptainId: viceCaptain?.id
-      });
-
-      const response = await fetch('/api/lineups', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          userId: user.id,
-          roomId: null, // Save as draft without room
-          gameweek: 1, // Default gameweek
-          players: playerSelections,
-          formation: lineup.formation,
-          captainId: captain?.id,
-          viceCaptainId: viceCaptain?.id,
-          isSubmitted: false
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('草稿已锁定到服务器！现在可以提交到联赛了。');
-        // Clear the local draft
-        if (localDraft && !localDraft.id) {
-          localStorage.removeItem(`lineup_draft_${user.id}`);
-          setLocalDraft(null);
-        }
-        // Refresh lineups to show updated data
-        await fetchLineups();
-      } else {
-        alert(`锁定失败: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error locking draft to server:', error);
-      alert('锁定时出错');
-    }
-  };
-
-  const handleSubmitToLeague = async (roomId: string) => {
-    if (!selectedLineupForSubmit) return;
-
-    console.log('Submitting lineup:', {
-      lineupId: selectedLineupForSubmit.id,
-      roomId: roomId,
-      lineupData: selectedLineupForSubmit
-    });
-
-    setSubmitting(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token || null;
-      
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch('/api/lineups/submit', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          lineupId: selectedLineupForSubmit.id,
-          roomId: roomId
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert(`${result.message || '阵容提交成功！'}\n\n你可以在联赛页面查看积分榜。`);
-        setShowSubmitModal(false);
-        setSelectedLineupForSubmit(null);
-        // Refresh lineups to show updated status
-        await fetchLineups();
-      } else {
-        // Show more specific error messages
-        if (result.error.includes('already submitted')) {
-          alert(`提交失败: 你已经在这个联赛的当前游戏周提交过阵容了。\n\n如需修改，请联系联赛管理员。`);
-        } else if (result.error.includes('not a member')) {
-          alert(`提交失败: 你不是这个联赛的成员。\n\n请先加入联赛再提交阵容。`);
-        } else {
-          alert(`提交失败: ${result.error}`);
-        }
-      }
-    } catch (error) {
-      console.error('Error submitting lineup:', error);
-      alert('提交时出现网络错误，请稍后重试');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const calculateTeamStats = (ld?: LineupData | null) => {
     const lineup = ld || localDraft || (lineups.length > 0 ? lineups[0] : null);
@@ -374,6 +276,80 @@ export default function MyTeamPage() {
   return (
     <Layout title="我的球队">
       <div className="container mx-auto px-6 py-12">
+        {/* 游戏周状态卡片 */}
+        <Card className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="text-2xl font-bold text-blue-700">第 {currentGameweek} 轮</div>
+                <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                  {joinedRooms.length > 0 ? `已加入 ${joinedRooms.length} 个联赛` : '未加入联赛'}
+                </div>
+              </div>
+
+              {upcomingMatches.length > 0 && (
+                <div>
+                  <div className="text-sm text-gray-600 mb-2">即将进行的比赛:</div>
+                  <div className="space-y-1">
+                    {upcomingMatches.slice(0, 3).map((fixture) => (
+                      <div key={fixture.id} className="text-sm">
+                        <span className="font-medium">{fixture.home_team.short_name}</span>
+                        <span className="mx-2 text-gray-500">vs</span>
+                        <span className="font-medium">{fixture.away_team.short_name}</span>
+                        <span className="ml-3 text-gray-500">
+                          {new Date(fixture.kickoff_time).toLocaleDateString('zh-CN', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                    {upcomingMatches.length > 3 && (
+                      <div className="text-xs text-gray-500">还有 {upcomingMatches.length - 3} 场比赛...</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              {joinedRooms.length === 0 ? (
+                <div className="text-center">
+                  <div className="text-sm text-gray-600 mb-2">开始你的梦幻足球之旅</div>
+                  <div className="flex gap-2">
+                    <a
+                      href="/leagues"
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                    >
+                      创建/加入联赛
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <div className="text-sm text-gray-600 mb-2">查看你的表现</div>
+                  <div className="flex gap-2">
+                    <a
+                      href="/leaderboard"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                    >
+                      查看排行榜
+                    </a>
+                    <a
+                      href="/leagues"
+                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium"
+                    >
+                      管理联赛
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+
         <div className="grid md:grid-cols-3 gap-8">
           <div className="md:col-span-2">
             <Card>
@@ -483,22 +459,16 @@ export default function MyTeamPage() {
               
               {/* 本地草稿 */}
               {localDraft && (
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <h5 className="font-semibold text-yellow-800 mb-2">📝 本地草稿</h5>
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h5 className="font-semibold text-blue-800 mb-2">📝 本地草稿</h5>
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-medium">阵型：{localDraft.formation}</div>
                       <div className="text-xs text-gray-500">最后保存：{localDraft.lastSaved}</div>
-                      <div className="text-xs text-yellow-600">⚠️ 未锁定到服务器，无法提交到联赛</div>
+                      <div className="text-xs text-blue-600">💡 在编辑页面可直接保存并提交到联赛</div>
                     </div>
-                    <div className="flex space-x-2">
+                    <div>
                       <a href="/my-team/squad" className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">继续编辑</a>
-                      <button
-                        onClick={() => handleLockDraft(localDraft)}
-                        className="px-3 py-1 rounded bg-orange-600 text-white text-sm hover:bg-orange-700"
-                      >
-                        🔒 锁定草稿
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -532,17 +502,6 @@ export default function MyTeamPage() {
                     </div>
                     <div className="flex space-x-2">
                       <a href={`/my-team/squad?loadLineup=${l.id}`} className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">编辑</a>
-                      {l.isDraft && l.id && joinedRooms.length > 0 && (
-                        <button 
-                          onClick={() => {
-                            setSelectedLineupForSubmit(l);
-                            setShowSubmitModal(true);
-                          }}
-                          className="px-3 py-1 rounded bg-green-600 text-white text-sm hover:bg-green-700"
-                        >
-                          提交到联赛
-                        </button>
-                      )}
                       {!l.isDraft && (
                         <div className="px-3 py-1 rounded bg-green-100 text-green-700 text-sm">
                           已参赛
@@ -582,50 +541,6 @@ export default function MyTeamPage() {
           </div>
         </div>
 
-        {/* 提交阵容模态框 */}
-        {showSubmitModal && selectedLineupForSubmit && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowSubmitModal(false)}>
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-xl font-bold mb-4">提交阵容到联赛</h3>
-              
-              <div className="mb-4">
-                <p className="text-gray-600 mb-2">选择要提交的阵容:</p>
-                <div className="bg-gray-50 p-3 rounded">
-                  <div className="font-semibold">阵型: {selectedLineupForSubmit.formation}</div>
-                  <div className="text-sm text-gray-600">保存: {selectedLineupForSubmit.lastSaved}</div>
-                  <div className="text-xs text-gray-500">ID: {selectedLineupForSubmit.id}</div>
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <p className="text-gray-600 mb-2">选择联赛:</p>
-                <div className="space-y-2">
-                  {joinedRooms.map(room => (
-                    <button
-                      key={room.id}
-                      onClick={() => handleSubmitToLeague(room.id)}
-                      disabled={submitting}
-                      className="w-full text-left p-3 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <div className="font-semibold">{room.name}</div>
-                      <div className="text-sm text-gray-600">代码: {room.room_code} • 游戏周 {room.gameweek}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => setShowSubmitModal(false)}
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

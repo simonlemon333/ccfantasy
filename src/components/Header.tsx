@@ -32,9 +32,6 @@ export default function Header() {
             <Link href="/leaderboard" className="text-gray-600 hover:text-blue-600 font-medium transition">
               排行榜
             </Link>
-            <Link href="/admin" className="text-gray-600 hover:text-blue-600 font-medium transition">
-              数据管理
-            </Link>
             
             <div className="flex space-x-3 ml-4">
               {loading ? (
@@ -43,6 +40,9 @@ export default function Header() {
                 // Authenticated user menu
                 <div className="flex items-center space-x-3">
                   <span className="text-gray-600">欢迎, {user.user_metadata?.username || user.email}</span>
+                  <Link href="/admin" className="text-xs text-gray-500 hover:text-blue-600 transition">
+                    管理
+                  </Link>
                   <Button variant="outline" size="sm" onClick={signOut}>
                     退出登录
                   </Button>
@@ -111,13 +111,6 @@ export default function Header() {
               >
                 排行榜
               </Link>
-              <Link
-                href="/admin"
-                className="text-gray-600 hover:text-blue-600 font-medium transition py-2 px-2 rounded hover:bg-gray-50"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                数据管理
-              </Link>
 
               {/* Mobile auth buttons */}
               <div className="flex flex-col space-y-2 mt-4 pt-4 border-t border-gray-200">
@@ -126,6 +119,9 @@ export default function Header() {
                 ) : user ? (
                   <div className="flex flex-col space-y-2">
                     <span className="text-gray-600 text-center">欢迎, {user.user_metadata?.username || user.email}</span>
+                    <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="outline" size="sm" className="w-full text-xs">系统管理</Button>
+                    </Link>
                     <Button variant="outline" size="sm" onClick={signOut} className="w-full">
                       退出登录
                     </Button>

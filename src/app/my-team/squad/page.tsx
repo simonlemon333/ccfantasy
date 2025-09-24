@@ -54,6 +54,9 @@ function SquadPageContent() {
   const [saveErrors, setSaveErrors] = useState<string[] | null>(null);
   const [localDraftAvailable, setLocalDraftAvailable] = useState(false);
   const [localDraft, setLocalDraft] = useState<any | null>(null);
+  const [joinedRooms, setJoinedRooms] = useState<any[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveAndSubmit, setSaveAndSubmit] = useState(false);
   const saveTimeoutRef = useRef<number | null>(null);
   const [filterTeam, setFilterTeam] = useState<string>('ALL');
   const [filterPosition, setFilterPosition] = useState<'ALL' | 'GK' | 'DEF' | 'MID' | 'FWD'>('ALL');
@@ -68,6 +71,7 @@ function SquadPageContent() {
     fetchPlayers();
     if (user) {
       loadUserLineup();
+      fetchJoinedRooms();
     } else {
       initializeSquad();
     }
@@ -94,6 +98,31 @@ function SquadPageContent() {
       console.error('Failed to fetch players:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchJoinedRooms = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token || null;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch('/api/rooms/joined', { headers });
+      const result = await response.json();
+
+      if (result.success) {
+        setJoinedRooms(result.data || []);
+      } else {
+        console.error('Failed to fetch joined rooms:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching joined rooms:', error);
     }
   };
 
@@ -326,6 +355,143 @@ function SquadPageContent() {
     } catch (error) {
       console.error('Save lineup error:', error);
     setSaveErrors(['保存阵容时出错']);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAndSubmitToLeague = async (roomId: string) => {
+    if (!user) {
+      alert('请先登录后再保存阵容');
+      return;
+    }
+
+    if (squad.length === 0) {
+      alert('请先选择球员组成阵容');
+      return;
+    }
+
+    // Same validation as saveLineup
+    const starters = squad.filter(p => p.is_starter);
+    const startersCount = starters.length;
+
+    const requiredCounts: Record<string, number> = {
+      GK: 1,
+      DEF: formation.def,
+      MID: formation.mid,
+      FWD: formation.fwd
+    };
+
+    const actualCounts = {
+      GK: starters.filter(p => p.position === 'GK').length,
+      DEF: starters.filter(p => p.position === 'DEF').length,
+      MID: starters.filter(p => p.position === 'MID').length,
+      FWD: starters.filter(p => p.position === 'FWD').length
+    };
+
+    const errors: string[] = [];
+    if (startersCount !== 11) errors.push(`首发人数必须为 11，目前为 ${startersCount}`);
+    (['GK','DEF','MID','FWD'] as const).forEach((pos) => {
+      const req = (requiredCounts as any)[pos];
+      const got = (actualCounts as any)[pos];
+      if (got !== req) errors.push(`${pos} 需要 ${req} 人，目前为 ${got}`);
+    });
+
+    if (errors.length > 0) {
+      setSaveErrors(errors);
+      return;
+    }
+
+    // Team limit validation
+    const statsForSave = calculateTeamStats();
+    const offendingTeams = Object.entries(statsForSave.teamCounts || {}).filter(([,c]) => (c || 0) > 3).map(([tid]) => statsForSave.teamIdToName?.[tid] || tid);
+    if (offendingTeams.length > 0) {
+      setSaveErrors([`每支球队最多允许 3 名球员，以下队伍超出：${offendingTeams.join(', ')}`]);
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const captain = squad.find(p => p.is_captain);
+      const viceCaptain = squad.find(p => p.is_vice_captain);
+
+      // Step 1: Save lineup as draft
+      const lineupData = {
+        userId: user.id,
+        roomId: null, // Save as draft first
+        gameweek: 1,
+        players: squad.map(player => ({
+          id: player.id,
+          position: player.position,
+          team_id: player.teams ? 'team_id_placeholder' : null,
+          price: player.price,
+          is_starter: player.is_starter,
+          is_captain: player.is_captain,
+          is_vice_captain: player.is_vice_captain
+        })),
+        formation: formation.name,
+        captainId: captain?.id || null,
+        viceCaptainId: viceCaptain?.id || null,
+        isSubmitted: false
+      };
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token || null;
+      if (!accessToken) {
+        setSaveErrors(['未检测到授权 token，请重新登录后重试']);
+        setSaving(false);
+        return;
+      }
+
+      // Save lineup first
+      const saveResponse = await fetch('/api/lineups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+        body: JSON.stringify(lineupData)
+      });
+
+      const saveResult = await saveResponse.json();
+
+      if (!saveResult.success) {
+        setSaveErrors([`保存失败: ${saveResult.error}`]);
+        setSaving(false);
+        return;
+      }
+
+      // Step 2: Submit to league
+      const submitResponse = await fetch('/api/lineups/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          lineupId: saveResult.data.id, // Use the ID from save response
+          roomId: roomId
+        })
+      });
+
+      const submitResult = await submitResponse.json();
+
+      if (submitResult.success) {
+        setLastSaved(new Date().toLocaleString());
+        setSaveErrors(null);
+        // Clear local draft since it's now submitted
+        if (localDraft) {
+          localStorage.removeItem(localDraftKey);
+          setLocalDraft(null);
+        }
+        alert(`阵容已保存并提交到联赛！\n\n你可以在联赛页面查看积分榜。`);
+        setShowSaveModal(false);
+      } else {
+        // If submission failed, show error but keep the saved draft
+        if (submitResult.error.includes('already submitted')) {
+          alert(`提交失败: 你已经在这个联赛的当前游戏周提交过阵容了。\n\n阵容已保存为草稿。`);
+        } else {
+          alert(`提交失败: ${submitResult.error}\n\n阵容已保存为草稿。`);
+        }
+      }
+    } catch (error) {
+      console.error('Save and submit error:', error);
+      setSaveErrors(['保存并提交时出错']);
     } finally {
       setSaving(false);
     }
@@ -1019,14 +1185,23 @@ function SquadPageContent() {
                 }}>
                   添加球员
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full"
                   onClick={saveLineup}
                   disabled={saving || !user}
                 >
-                  {saving ? '保存中...' : '保存阵容'}
+                  {saving ? '保存中...' : '保存草稿'}
                 </Button>
+                {user && joinedRooms.length > 0 && (
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    onClick={() => setShowSaveModal(true)}
+                    disabled={saving}
+                  >
+                    {saving ? '处理中...' : '保存并提交到联赛'}
+                  </Button>
+                )}
                 <Button variant="outline" className="w-full" onClick={autofillSquad}>
                   自动填充
                 </Button>
@@ -1062,6 +1237,56 @@ function SquadPageContent() {
             </Card>
           </div>
         </div>
+
+        {/* 保存并提交模态框 */}
+        {showSaveModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowSaveModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-xl font-bold mb-4">保存并提交到联赛</h3>
+
+              <div className="mb-4">
+                <p className="text-gray-600 mb-2">你的阵容将被保存并直接提交到所选联赛</p>
+                <div className="text-sm text-orange-600 bg-orange-50 p-3 rounded">
+                  ⚠️ 提交后无法修改本轮阵容，请确认阵容无误
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <p className="text-gray-600 mb-3">选择联赛:</p>
+                <div className="space-y-2">
+                  {joinedRooms.map(room => (
+                    <button
+                      key={room.id}
+                      onClick={() => saveAndSubmitToLeague(room.id)}
+                      disabled={saving}
+                      className="w-full text-left p-3 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <div className="font-semibold">{room.name}</div>
+                      <div className="text-sm text-gray-600">代码: {room.room_code} • 游戏周 {room.gameweek}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowSaveModal(false)}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={saveLineup}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                  只保存草稿
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 球员选择器模态框 */}
         {showPlayerSelector && (

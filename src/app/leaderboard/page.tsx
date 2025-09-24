@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import Card from '../../components/ui/Card';
+import { useAuth } from '../../hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 
 interface LeaderboardEntry {
   user_id: string;
@@ -13,15 +15,61 @@ interface LeaderboardEntry {
   gameweek: number;
 }
 
+interface JoinedRoom {
+  id: string;
+  room_code: string;
+  name: string;
+  description: string;
+  gameweek: number;
+  is_active: boolean;
+  joined_at: string;
+}
+
 export default function LeaderboardPage() {
+  const { user } = useAuth();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [selectedGameweek, setSelectedGameweek] = useState<number>(1);
   const [viewType, setViewType] = useState<'total' | 'gameweek'>('total');
   const [loading, setLoading] = useState(true);
+  const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<string>('global');
+  const [currentRoom, setCurrentRoom] = useState<JoinedRoom | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchJoinedRooms();
+    }
+    fetchLeaderboard();
+  }, [user]);
 
   useEffect(() => {
     fetchLeaderboard();
-  }, [selectedGameweek, viewType]);
+  }, [selectedGameweek, viewType, selectedRoom]);
+
+  const fetchJoinedRooms = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token || null;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch('/api/rooms/joined', { headers });
+      const result = await response.json();
+
+      if (result.success) {
+        setJoinedRooms(result.data || []);
+      } else {
+        console.error('Failed to fetch joined rooms:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching joined rooms:', error);
+    }
+  };
 
   const fetchLeaderboard = async () => {
     try {
@@ -30,10 +78,23 @@ export default function LeaderboardPage() {
         scope: viewType
       });
 
+      // Add roomId if not showing global leaderboard
+      if (selectedRoom !== 'global') {
+        params.append('roomId', selectedRoom);
+      }
+
       const response = await fetch(`/api/leaderboard?${params}`);
       const result = await response.json();
       if (result.success) {
         setLeaderboard(result.data.leaderboard || []);
+
+        // Set current room info
+        if (selectedRoom === 'global') {
+          setCurrentRoom(null);
+        } else {
+          const room = joinedRooms.find(r => r.id === selectedRoom);
+          setCurrentRoom(room || null);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
@@ -101,8 +162,8 @@ export default function LeaderboardPage() {
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">轮次</label>
-              <select 
-                value={selectedGameweek} 
+              <select
+                value={selectedGameweek}
                 onChange={(e) => setSelectedGameweek(parseInt(e.target.value))}
                 className="border border-gray-300 rounded-lg px-3 py-2"
               >
@@ -111,14 +172,58 @@ export default function LeaderboardPage() {
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">联赛范围</label>
+              <select
+                value={selectedRoom}
+                onChange={(e) => setSelectedRoom(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 min-w-40"
+              >
+                <option value="global">全球排行榜</option>
+                {joinedRooms.map(room => (
+                  <option key={room.id} value={room.id}>{room.name}</option>
+                ))}
+              </select>
+            </div>
             
-            <div className="ml-auto">
-              <div className="text-sm text-gray-600">
+            <div className="ml-auto text-right">
+              <div className="text-sm text-gray-600 mb-1">
                 {viewType === 'total' ? '总积分排行' : `第${selectedGameweek}轮积分排行`}
+              </div>
+              <div className="text-xs text-blue-600 font-medium">
+                {currentRoom ? `📍 ${currentRoom.name}` : '🌍 全球排行榜'}
               </div>
             </div>
           </div>
         </Card>
+
+        {/* 联赛信息横幅 */}
+        {currentRoom && (
+          <Card className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="text-2xl">🏆</div>
+                <div>
+                  <h3 className="text-lg font-bold text-blue-800">{currentRoom.name}</h3>
+                  <p className="text-sm text-blue-600">
+                    联赛代码: {currentRoom.room_code} • 当前游戏周: {currentRoom.gameweek}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-600">你在该联赛的排名</div>
+                <div className="text-xs text-blue-600">
+                  {leaderboard.find(entry => user && entry.user_id === user.id) ? (
+                    <span className="font-bold">#{leaderboard.find(entry => user && entry.user_id === user.id)?.rank}</span>
+                  ) : (
+                    <span>未参与</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* 排行榜 */}
         {leaderboard.length === 0 ? (
@@ -175,8 +280,15 @@ export default function LeaderboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {leaderboard.map((entry, index) => (
-                      <tr key={entry.user_id} className={`hover:bg-gray-50 ${getRankColor(entry.rank)}`}>
+                    {leaderboard.map((entry, index) => {
+                      const isCurrentUser = user && entry.user_id === user.id;
+                      return (
+                        <tr
+                          key={entry.user_id}
+                          className={`hover:bg-gray-50 ${getRankColor(entry.rank)} ${
+                            isCurrentUser ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                          }`}
+                        >
                         <td className="px-4 py-4">
                           <div className="flex items-center">
                             <span className="text-lg font-bold mr-2">{getRankIcon(entry.rank)}</span>
@@ -184,7 +296,12 @@ export default function LeaderboardPage() {
                           </div>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="font-medium text-gray-900">{entry.username}</div>
+                          <div className="font-medium text-gray-900">
+                            {entry.username}
+                            {isCurrentUser && (
+                              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">你</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-4 text-right">
                           <span className="text-lg font-bold">
@@ -200,7 +317,8 @@ export default function LeaderboardPage() {
                           <span className="text-sm text-gray-500">-</span>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
