@@ -10,11 +10,80 @@ export async function GET(request: NextRequest) {
     const scope = searchParams.get('scope') || 'gameweek'; // 'gameweek', 'total', 'season'
     const limit = parseInt(searchParams.get('limit') || '50');
 
+    // If no roomId provided, show global leaderboard
     if (!roomId) {
+      // Global leaderboard - get all submitted lineups
+      let globalQuery;
+      let globalOrderField: string;
+
+      const targetGameweek = gameweek ? parseInt(gameweek) : 1;
+
+      switch (scope) {
+        case 'total':
+          globalOrderField = 'total_points';
+          globalQuery = supabase
+            .from('lineups')
+            .select(`
+              user_id,
+              total_points,
+              users!inner(id, username, display_name, avatar_url),
+              room_id,
+              rooms!inner(name)
+            `)
+            .eq('is_submitted', true);
+          break;
+
+        case 'gameweek':
+        default:
+          globalOrderField = 'gameweek_points';
+          globalQuery = supabase
+            .from('lineups')
+            .select(`
+              user_id,
+              gameweek_points,
+              total_points,
+              gameweek,
+              formation,
+              captain_id,
+              vice_captain_id,
+              total_cost,
+              submitted_at,
+              users!inner(id, username, display_name, avatar_url),
+              rooms!inner(name),
+              players!lineups_captain_id_fkey(id, name, position, teams(short_name)),
+              players_vice:players!lineups_vice_captain_id_fkey(id, name, position, teams(short_name))
+            `)
+            .eq('gameweek', targetGameweek)
+            .eq('is_submitted', true);
+          break;
+      }
+
+      const { data: globalData, error: globalError } = await globalQuery
+        .order(globalOrderField, { ascending: false })
+        .limit(limit);
+
+      if (globalError) throw globalError;
+
+      const globalLeaderboard = (globalData || []).map((entry: any, index: number) => ({
+        ...entry,
+        rank: index + 1,
+        points: scope === 'total' ? entry.total_points : entry.gameweek_points
+      }));
+
       return NextResponse.json({
-        success: false,
-        error: 'Missing required parameter: roomId'
-      }, { status: 400 });
+        success: true,
+        data: {
+          leaderboard: globalLeaderboard,
+          room: null,
+          scope,
+          gameweek: scope === 'gameweek' ? targetGameweek : null,
+          stats: null,
+          popular_captain: null,
+          total_players: globalLeaderboard.length,
+          last_updated: new Date().toISOString(),
+          is_global: true
+        }
+      });
     }
 
     // Verify room exists

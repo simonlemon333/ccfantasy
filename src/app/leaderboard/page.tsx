@@ -27,13 +27,13 @@ export default function LeaderboardPage() {
     try {
       const params = new URLSearchParams({
         gameweek: selectedGameweek.toString(),
-        type: viewType
+        scope: viewType
       });
-      
+
       const response = await fetch(`/api/leaderboard?${params}`);
       const result = await response.json();
       if (result.success) {
-        setLeaderboard(result.data || []);
+        setLeaderboard(result.data.leaderboard || []);
       }
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);

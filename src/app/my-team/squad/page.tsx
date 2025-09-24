@@ -950,7 +950,7 @@ function SquadPageContent() {
                   <div key={player.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                     <div>
                       <div className="font-medium text-sm">{player.name.split(' ').pop()}</div>
-                      <div className="text-xs text-gray-500">{player.teams.short_name}</div>
+                      <div className="text-xs text-gray-500">{player.teams?.short_name || 'Unknown'}</div>
                     </div>
                     <div className="flex gap-1">
                       <button 
@@ -1155,7 +1155,7 @@ function SquadPageContent() {
                   <div className="mt-4 text-center text-sm text-gray-600">
                     共 {players
                       .filter(player => selectedPosition ? player.position === selectedPosition : (filterPosition === 'ALL' ? true : player.position === filterPosition))
-                      .filter(player => filterTeam === 'ALL' || player.teams.short_name === filterTeam)
+                      .filter(player => filterTeam === 'ALL' || player.teams?.short_name === filterTeam)
                       .filter(player => !squad.find(s => s.id === player.id))
                       .length} 名可选球员
                 </div>
@@ -1164,7 +1164,7 @@ function SquadPageContent() {
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {players
                     .filter(player => selectedPosition ? player.position === selectedPosition : (filterPosition === 'ALL' ? true : player.position === filterPosition))
-                    .filter(player => filterTeam === 'ALL' || player.teams.short_name === filterTeam)
+                    .filter(player => filterTeam === 'ALL' || player.teams?.short_name === filterTeam)
                     .filter(player => !squad.find(s => s.id === player.id))
                     .sort((a, b) => {
                       const multiplier = sortOrder === 'desc' ? -1 : 1;
@@ -1175,7 +1175,7 @@ function SquadPageContent() {
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex-1">
                             <div className="font-medium">{player.name.split(' ').pop()}</div>
-                            <div className="text-sm text-gray-500">{player.teams.short_name}</div>
+                            <div className="text-sm text-gray-500">{player.teams?.short_name || 'Unknown'}</div>
                           </div>
                           <span className={`px-2 py-1 rounded text-xs font-semibold ${getPositionColor(player.position)}`}>
                             {player.position}
