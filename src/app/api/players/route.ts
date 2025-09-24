@@ -76,11 +76,11 @@ export async function GET(request: NextRequest) {
       .from('players')
       .select('*', { count: 'exact', head: true })
       .eq('is_available', true)
-      .not('team_id', 'is', null);
+      .not('team', 'is', null);
 
     // Apply same filters for count
-    if (team && teamData) {
-      countQuery = countQuery.eq('team_id', teamData.id);
+    if (team) {
+      countQuery = countQuery.eq('team', team.toUpperCase());
     }
     if (position) {
       countQuery = countQuery.eq('position', position.toUpperCase());
