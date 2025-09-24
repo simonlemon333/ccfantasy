@@ -441,7 +441,7 @@ export default function FixturesPage() {
   const handleFixtureClick = async (fixture: Fixture) => {
     setSelectedFixture(fixture);
     if (fixture.finished) {
-      await fetchFixtureEvents(fixture.id);
+      await fetchFixtureEvents(fixture.id.toString());
     }
   };
 
