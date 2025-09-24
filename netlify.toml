@@ -1,0 +1,15 @@
+[build]
+  publish = ".next"
+  command = "pnpm build"
+
+[build.environment]
+  NPM_FLAGS = "--version"
+  PNPM_VERSION = "10.14.0"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  external_node_modules = ["@supabase/supabase-js"]

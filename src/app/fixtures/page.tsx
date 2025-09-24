@@ -5,20 +5,13 @@ import Layout from '../../components/Layout';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { useAuth } from '../../hooks/useAuth';
-
-interface Team {
-  id: string;
-  name: string;
-  short_name: string;
-  primary_color?: string;
-  logo_url?: string;
-}
+import { getTeamInfo } from '../../lib/teamHelpers';
 
 interface Fixture {
-  id: string;
+  id: number;                      // Now using FPL fixture ID (integer)
   gameweek: number;
-  home_team: Team;
-  away_team: Team;
+  home_team: string;              // Team short name (e.g., "ARS", "MCI")
+  away_team: string;              // Team short name (e.g., "CHE", "LIV")
   kickoff_time: string;
   home_score?: number;
   away_score?: number;
@@ -171,6 +164,116 @@ export default function FixturesPage() {
       } else {
         alert(`同步时出错: ${error.message || '网络错误'}`);
       }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const quickUpdateFixtures = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch('/api/admin/quick-fixtures-update', {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`快速更新完成！\n${result.data.message}`);
+        fetchFixtures(); // 刷新赛事数据
+      } else {
+        alert(`快速更新失败: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error updating fixtures:', error);
+      alert(`更新时出错: ${error.message || '网络错误'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const simpleUpdateFixtures = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch('/api/admin/simple-fixtures-update', {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`简化更新完成！\n${result.data.message}`);
+        fetchFixtures(); // 刷新赛事数据
+      } else {
+        alert(`简化更新失败: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error updating fixtures:', error);
+      alert(`更新时出错: ${error.message || '网络错误'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const checkTableStructure = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch('/api/admin/check-table-structure', {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const data = result.data;
+        const message = `表结构检查：\n\n` +
+          `Teams: ${data.teams.count} 条记录\n` +
+          `Players: ${data.players.count} 条记录\n` +
+          `Fixtures: ${data.fixtures.count} 条记录\n\n` +
+          `错误:\n` +
+          `Teams: ${data.teams.error || '无'}\n` +
+          `Players: ${data.players.error || '无'}\n` +
+          `Fixtures: ${data.fixtures.error || '无'}`;
+        alert(message);
+        console.log('详细表结构:', result.data);
+      } else {
+        alert(`检查失败: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error checking table structure:', error);
+      alert(`检查时出错: ${error.message || '网络错误'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const debugFixturesUpdate = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch('/api/admin/debug-fixtures-update', {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const debug = result.debug;
+        const message = `调试信息：\n` +
+          `• FPL总比赛: ${debug.totalFplFixtures}\n` +
+          `• FPL已完成: ${debug.finishedFplFixtures}\n` +
+          `• 数据库队伍: ${debug.dbTeamsCount}\n` +
+          `• 数据库比赛: ${debug.dbFixturesCount}\n` +
+          `• 样本分析: 找到${debug.sampleAnalysis.foundMatches}/${debug.sampleAnalysis.analyzed}场匹配\n` +
+          `• 需要更新: ${debug.sampleAnalysis.needUpdate}场\n` +
+          `• 跳过: ${debug.sampleAnalysis.skipped}场`;
+        alert(message);
+        console.log('详细调试信息:', result.debug);
+      } else {
+        alert(`调试失败: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error debugging fixtures:', error);
+      alert(`调试时出错: ${error.message || '网络错误'}`);
     } finally {
       setSyncing(false);
     }
@@ -384,6 +487,18 @@ export default function FixturesPage() {
               </Button>
               {user && (
                 <div className="flex gap-2">
+                  <Button onClick={checkTableStructure} disabled={syncing} className="bg-orange-600 hover:bg-orange-700">
+                    {syncing ? '检查中...' : '检查表结构'}
+                  </Button>
+                  <Button onClick={simpleUpdateFixtures} disabled={syncing} className="bg-blue-600 hover:bg-blue-700">
+                    {syncing ? '简化更新中...' : '新表结构更新'}
+                  </Button>
+                  <Button onClick={quickUpdateFixtures} disabled={syncing} className="bg-green-600 hover:bg-green-700">
+                    {syncing ? '更新中...' : '旧快速刷新'}
+                  </Button>
+                  <Button onClick={debugFixturesUpdate} disabled={syncing} className="bg-purple-600 hover:bg-purple-700">
+                    {syncing ? '调试中...' : '调试更新'}
+                  </Button>
                   <Button onClick={syncFPLData} disabled={syncing}>
                     {syncing ? '同步中...' : '快速同步'}
                   </Button>
@@ -471,10 +586,12 @@ export default function FixturesPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {fixtures.map((fixture) => {
               const { date, time } = formatDateTime(fixture.kickoff_time);
-              
+              const homeTeamInfo = getTeamInfo(fixture.home_team);
+              const awayTeamInfo = getTeamInfo(fixture.away_team);
+
               return (
-                <div 
-                  key={fixture.id} 
+                <div
+                  key={fixture.id}
                   className="bg-white p-6 rounded-lg border hover:shadow-lg transition-shadow cursor-pointer"
                   onClick={() => handleFixtureClick(fixture)}
                 >
@@ -488,14 +605,14 @@ export default function FixturesPage() {
                       {fixture.finished ? '已结束' : '未开始'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between">
                     <div className="text-center flex-1">
                       <div className="flex items-center justify-center mb-2">
-                        {fixture.home_team.logo_url && (
+                        {homeTeamInfo?.logo_url && (
                           <img
-                            src={fixture.home_team.logo_url}
-                            alt={fixture.home_team.short_name}
+                            src={homeTeamInfo.logo_url}
+                            alt={fixture.home_team}
                             className="w-6 h-6 object-contain mr-2"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
@@ -503,14 +620,14 @@ export default function FixturesPage() {
                           />
                         )}
                         <div className="font-bold text-gray-800">
-                          {fixture.home_team.short_name}
+                          {fixture.home_team}
                         </div>
                       </div>
                       <div className="text-xs text-gray-600">
-                        {fixture.home_team.name}
+                        {homeTeamInfo?.name || fixture.home_team}
                       </div>
                     </div>
-                    
+
                     <div className="text-center mx-4">
                       {fixture.finished ? (
                         <div className="text-2xl font-bold text-gray-800">
@@ -525,13 +642,13 @@ export default function FixturesPage() {
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="text-center flex-1">
                       <div className="flex items-center justify-center mb-2">
-                        {fixture.away_team.logo_url && (
+                        {awayTeamInfo?.logo_url && (
                           <img
-                            src={fixture.away_team.logo_url}
-                            alt={fixture.away_team.short_name}
+                            src={awayTeamInfo.logo_url}
+                            alt={fixture.away_team}
                             className="w-6 h-6 object-contain mr-2"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
@@ -539,11 +656,11 @@ export default function FixturesPage() {
                           />
                         )}
                         <div className="font-bold text-gray-800">
-                          {fixture.away_team.short_name}
+                          {fixture.away_team}
                         </div>
                       </div>
                       <div className="text-xs text-gray-600">
-                        {fixture.away_team.name}
+                        {awayTeamInfo?.name || fixture.away_team}
                       </div>
                     </div>
                   </div>
@@ -559,9 +676,9 @@ export default function FixturesPage() {
             <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-bold">
-                  {selectedFixture.home_team.name} vs {selectedFixture.away_team.name}
+                  {getTeamInfo(selectedFixture.home_team)?.name || selectedFixture.home_team} vs {getTeamInfo(selectedFixture.away_team)?.name || selectedFixture.away_team}
                 </h3>
-                <button 
+                <button
                   onClick={() => setSelectedFixture(null)}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >

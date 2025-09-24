@@ -17,30 +17,16 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Get team ID if team filter is provided
-    let teamData = null;
-    if (team) {
-      const { data } = await supabase
-        .from('teams')
-        .select('id')
-        .eq('short_name', team.toUpperCase())
-        .single();
-      teamData = data;
-    }
-
-    // Build query
+    // Build query - now using team short_name directly
     let query = supabase
       .from('players')
-      .select(`
-        *,
-        teams(id, name, short_name, logo_url, primary_color)
-      `)
+      .select('*')
       .eq('is_available', true)
-      .not('team_id', 'is', null);
+      .not('team', 'is', null);
 
     // Apply filters
-    if (team && teamData) {
-      query = query.eq('team_id', teamData.id);
+    if (team) {
+      query = query.eq('team', team.toUpperCase());
     }
 
     if (position) {

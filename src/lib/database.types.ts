@@ -103,18 +103,20 @@ export interface Database {
       // Premier League teams
       teams: {
         Row: {
-          id: string;
+          id: number;                    // FPL team ID (1-20)
           name: string;
-          short_name: string; // e.g., "ARS", "MCI"
+          short_name: string;            // e.g., "ARS", "MCI"
+          code: number | null;           // FPL team code
           logo_url: string | null;
           primary_color: string | null;
           secondary_color: string | null;
           created_at: string;
         };
         Insert: {
-          id?: string;
+          id: number;                    // Required FPL team ID
           name: string;
           short_name: string;
+          code?: number | null;
           logo_url?: string | null;
           primary_color?: string | null;
           secondary_color?: string | null;
@@ -123,6 +125,7 @@ export interface Database {
         Update: {
           name?: string;
           short_name?: string;
+          code?: number | null;
           logo_url?: string | null;
           primary_color?: string | null;
           secondary_color?: string | null;
@@ -135,7 +138,7 @@ export interface Database {
           id: string;
           name: string;
           position: 'GK' | 'DEF' | 'MID' | 'FWD';
-          team_id: string;
+          team: string;                  // Team short name (e.g., "ARS", "MCI")
           price: number; // in millions, e.g., 12.5
           total_points: number;
           form: number; // average points last 5 games
@@ -147,6 +150,7 @@ export interface Database {
           red_cards: number;
           saves: number;
           bonus_points: number;
+          photo_url: string | null;      // Player photo URL
           is_available: boolean;
           created_at: string;
           updated_at: string;
@@ -155,7 +159,7 @@ export interface Database {
           id?: string;
           name: string;
           position: 'GK' | 'DEF' | 'MID' | 'FWD';
-          team_id: string;
+          team: string;
           price: number;
           total_points?: number;
           form?: number;
@@ -167,6 +171,7 @@ export interface Database {
           red_cards?: number;
           saves?: number;
           bonus_points?: number;
+          photo_url?: string | null;
           is_available?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -174,7 +179,7 @@ export interface Database {
         Update: {
           name?: string;
           position?: 'GK' | 'DEF' | 'MID' | 'FWD';
-          team_id?: string;
+          team?: string;
           price?: number;
           total_points?: number;
           form?: number;
@@ -186,6 +191,7 @@ export interface Database {
           red_cards?: number;
           saves?: number;
           bonus_points?: number;
+          photo_url?: string | null;
           is_available?: boolean;
           updated_at?: string;
         };
@@ -276,10 +282,10 @@ export interface Database {
       // Premier League fixtures
       fixtures: {
         Row: {
-          id: string;
+          id: number;                    // FPL fixture ID
           gameweek: number;
-          home_team_id: string;
-          away_team_id: string;
+          home_team: string;             // Team short name (e.g., "ARS", "MCI")
+          away_team: string;             // Team short name (e.g., "CHE", "LIV")
           kickoff_time: string;
           home_score: number | null;
           away_score: number | null;
@@ -289,10 +295,10 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
-          id?: string;
+          id: number;                    // Required FPL fixture ID
           gameweek: number;
-          home_team_id: string;
-          away_team_id: string;
+          home_team: string;
+          away_team: string;
           kickoff_time: string;
           home_score?: number | null;
           away_score?: number | null;
@@ -315,7 +321,7 @@ export interface Database {
       player_events: {
         Row: {
           id: string;
-          fixture_id: string;
+          fixture_id: number;            // References fixtures.id (FPL fixture ID)
           player_id: string;
           event_type: 'goal' | 'assist' | 'yellow_card' | 'red_card' | 'clean_sheet' | 'save' | 'penalty_miss' | 'own_goal' | 'bonus';
           minute: number | null;
@@ -324,7 +330,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          fixture_id: string;
+          fixture_id: number;
           player_id: string;
           event_type: 'goal' | 'assist' | 'yellow_card' | 'red_card' | 'clean_sheet' | 'save' | 'penalty_miss' | 'own_goal' | 'bonus';
           minute?: number | null;

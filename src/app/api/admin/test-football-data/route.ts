@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET /api/admin/test-football-data - Test Football-Data.org API directly

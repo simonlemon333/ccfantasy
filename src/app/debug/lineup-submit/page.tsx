@@ -5,6 +5,7 @@ import Layout from '../../../components/Layout';
 import Card from '../../../components/ui/Card';
 import Button from '../../../components/ui/Button';
 import { useAuth } from '../../../hooks/useAuth';
+import { supabase } from '../../../lib/supabase';
 
 export default function LineupSubmitDebugPage() {
   const [roomCode, setRoomCode] = useState('');

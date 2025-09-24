@@ -20,20 +20,8 @@ export async function GET(request: NextRequest) {
         away_score,
         finished,
         minutes_played,
-        home_team:home_team_id(
-          id,
-          name,
-          short_name,
-          primary_color,
-          logo_url
-        ),
-        away_team:away_team_id(
-          id,
-          name,
-          short_name,
-          primary_color,
-          logo_url
-        )
+        home_team,
+        away_team
       `)
       .order('kickoff_time', { ascending: true })
       .limit(limit);
@@ -96,8 +84,8 @@ export async function POST(request: NextRequest) {
           .from('fixtures')
           .select('id')
           .eq('gameweek', fixture.gameweek)
-          .eq('home_team_id', fixture.home_team_id)
-          .eq('away_team_id', fixture.away_team_id)
+          .eq('home_team', fixture.home_team)
+          .eq('away_team', fixture.away_team)
           .single();
         
         if (existingFixture) {

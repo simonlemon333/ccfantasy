@@ -5,21 +5,18 @@ import Layout from '../../components/Layout';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import PlayerCard from '../../components/PlayerCard';
+import { getTeamInfo } from '../../lib/teamHelpers';
 
 interface Player {
   id: string;
   name: string;
   position: 'GK' | 'DEF' | 'MID' | 'FWD';
+  team: string;                        // Now just the short name
   photo_url?: string | null;
   price: number;
   total_points: number;
   goals: number;
   assists: number;
-  teams: {
-    name: string;
-    short_name: string;
-    primary_color: string;
-  } | null;
 }
 
 interface Team {

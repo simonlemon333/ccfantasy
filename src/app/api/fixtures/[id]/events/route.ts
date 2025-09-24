@@ -95,20 +95,20 @@ export async function GET(
     };
 
     // 按队伍分组事件
-    const homeTeamEvents = events?.filter(e => 
-      e.player?.teams?.short_name === fixture.home_team?.short_name
+    const homeTeamEvents = events?.filter(e =>
+      (e.player as any)?.teams?.short_name === (fixture.home_team as any)?.short_name
     ) || [];
-    
-    const awayTeamEvents = events?.filter(e => 
-      e.player?.teams?.short_name === fixture.away_team?.short_name
+
+    const awayTeamEvents = events?.filter(e =>
+      (e.player as any)?.teams?.short_name === (fixture.away_team as any)?.short_name
     ) || [];
 
     // 计算队伍统计
     const teamStats = {
       homeTeam: {
-        name: fixture.home_team?.name,
-        shortName: fixture.home_team?.short_name,
-        logo: fixture.home_team?.logo_url,
+        name: (fixture.home_team as any)?.name,
+        shortName: (fixture.home_team as any)?.short_name,
+        logo: (fixture.home_team as any)?.logo_url,
         score: fixture.home_score,
         events: homeTeamEvents.length,
         goals: homeTeamEvents.filter(e => e.event_type === 'goal').length,
@@ -117,9 +117,9 @@ export async function GET(
         redCards: homeTeamEvents.filter(e => e.event_type === 'red_card').length
       },
       awayTeam: {
-        name: fixture.away_team?.name,
-        shortName: fixture.away_team?.short_name,
-        logo: fixture.away_team?.logo_url,
+        name: (fixture.away_team as any)?.name,
+        shortName: (fixture.away_team as any)?.short_name,
+        logo: (fixture.away_team as any)?.logo_url,
         score: fixture.away_score,
         events: awayTeamEvents.length,
         goals: awayTeamEvents.filter(e => e.event_type === 'goal').length,
@@ -134,14 +134,14 @@ export async function GET(
       id: event.id,
       minute: event.minute,
       eventType: event.event_type,
-      description: `${event.player?.name} ${getEventDescription(event.event_type)}`,
+      description: `${(event.player as any)?.name} ${getEventDescription(event.event_type)}`,
       player: {
-        name: event.player?.name,
-        position: event.player?.position,
-        team: event.player?.teams?.short_name
+        name: (event.player as any)?.name,
+        position: (event.player as any)?.position,
+        team: (event.player as any)?.teams?.short_name
       },
       points: event.points,
-      team: event.player?.teams?.short_name === fixture.home_team?.short_name ? 'home' : 'away'
+      team: (event.player as any)?.teams?.short_name === (fixture.home_team as any)?.short_name ? 'home' : 'away'
     })) || [];
 
     // 按分钟分组时间轴
@@ -179,7 +179,7 @@ export async function GET(
           isCompetitive: (fixture.home_score || 0) !== (fixture.away_score || 0)
         }
       },
-      message: `获取比赛 ${fixture.home_team?.short_name} vs ${fixture.away_team?.short_name} 事件成功`
+      message: `获取比赛 ${(fixture.home_team as any)?.short_name} vs ${(fixture.away_team as any)?.short_name} 事件成功`
     });
 
   } catch (error) {

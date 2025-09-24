@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Layout from '../../../components/Layout';
 import Card from '../../../components/ui/Card';
@@ -39,7 +39,7 @@ const FORMATIONS = [
   { name: '5-4-1', def: 5, mid: 4, fwd: 1 }
 ];
 
-export default function SquadPage() {
+function SquadPageContent() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [formation, setFormation] = useState(FORMATIONS[0]);
@@ -1245,4 +1245,16 @@ function getPositionColor(position: string) {
     case 'FWD': return 'bg-red-100 text-red-800 border-red-300';
     default: return 'bg-gray-100 text-gray-800 border-gray-300';
   }
+}
+
+export default function SquadPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto px-6 py-12 text-center">
+        <div className="text-2xl">加载阵容数据中...</div>
+      </div>
+    }>
+      <SquadPageContent />
+    </Suspense>
+  );
 }

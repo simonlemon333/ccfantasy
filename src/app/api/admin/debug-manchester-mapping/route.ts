@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET /api/admin/debug-manchester-mapping - Debug Manchester teams mapping

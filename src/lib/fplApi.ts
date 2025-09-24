@@ -157,6 +157,34 @@ class FPLApiService {
   getTeamMapping(): Record<number, string> {
     return { ...this.teamMapping };
   }
+
+  // Get team short name by FPL team ID
+  getTeamShortName(fplTeamId: number): string {
+    const teamShortNames: Record<number, string> = {
+      1: 'ARS',  // Arsenal
+      2: 'AVL',  // Aston Villa
+      3: 'BOU',  // Bournemouth
+      4: 'BRE',  // Brentford
+      5: 'BHA',  // Brighton
+      6: 'CHE',  // Chelsea
+      7: 'CRY',  // Crystal Palace
+      8: 'EVE',  // Everton
+      9: 'FUL',  // Fulham
+      10: 'IPS', // Ipswich
+      11: 'LEI', // Leicester
+      12: 'LIV', // Liverpool
+      13: 'MCI', // Man City
+      14: 'MUN', // Man United
+      15: 'NEW', // Newcastle
+      16: 'NFO', // Nottingham Forest
+      17: 'SOU', // Southampton
+      18: 'TOT', // Tottenham
+      19: 'WHU', // West Ham
+      20: 'WOL', // Wolves
+    };
+
+    return teamShortNames[fplTeamId] || 'UNK';
+  }
 }
 
 export const fplApi = new FPLApiService();

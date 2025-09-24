@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       const playerName = `${fplPlayer.first_name} ${fplPlayer.second_name}`;
       const position = fplApi.convertPosition(fplPlayer.element_type);
       const price = fplApi.convertPrice(fplPlayer.now_cost);
-      const teamUuid = fplApi.mapTeamToUuid(fplPlayer.team);
+      const teamShortName = fplApi.getTeamShortName(fplPlayer.team);
       const photoUrl = fplApi.getPlayerPhotoUrl(fplPlayer.photo);
 
       const playerKey = `${playerName.toLowerCase()}_${position}`;
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       const playerData = {
         name: playerName,
         position,
-        team_id: teamUuid,
+        team: teamShortName,                    // Now using team short name directly
         price,
         total_points: fplPlayer.total_points,
         form: parseFloat(fplPlayer.form) || 0,

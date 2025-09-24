@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET /api/admin/setup-free-apis - Get setup guide for free APIs

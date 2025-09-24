@@ -8,11 +8,11 @@ if (!serviceRoleKey) {
   console.warn('SUPABASE_SERVICE_ROLE_KEY is not set. Server-side operations requiring elevated privileges may fail.');
 }
 
-export const supabaseAdmin = createClient<Database>(supabaseUrl, serviceRoleKey, {
+export const supabaseAdmin = serviceRoleKey ? createClient<Database>(supabaseUrl, serviceRoleKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
-});
+}) : null;
 
 export type { Database } from './database.types';

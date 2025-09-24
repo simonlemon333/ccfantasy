@@ -4,13 +4,26 @@ import { supabase } from '@/lib/supabase';
 // GET /api/rooms/joined - 获取用户已加入的房间
 export async function GET(request: NextRequest) {
   try {
+    // Try to get userId from search params first (for compatibility)
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    let userId = searchParams.get('userId');
+
+    // If no userId in params, try to get from auth header
+    if (!userId) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        if (user && !authError) {
+          userId = user.id;
+        }
+      }
+    }
 
     if (!userId) {
       return NextResponse.json({
         success: false,
-        error: '缺少userId参数'
+        error: '缺少用户认证信息'
       }, { status: 400 });
     }
 
@@ -61,7 +74,7 @@ export async function GET(request: NextRequest) {
           const { count: memberCount } = await supabase
             .from('room_members')
             .select('*', { count: 'exact', head: true })
-            .eq('room_id', room.id)
+            .eq('room_id', (room as any).id)
             .eq('is_active', true);
 
           // 获取用户在这个房间的最新阵容
@@ -74,8 +87,8 @@ export async function GET(request: NextRequest) {
               lineup_players(count)
             `)
             .eq('user_id', userId)
-            .eq('room_id', room.id)
-            .eq('gameweek', room.gameweek || 1)
+            .eq('room_id', (room as any).id)
+            .eq('gameweek', (room as any).gameweek || 1)
             .order('created_at', { ascending: false })
             .limit(1);
 
@@ -87,26 +100,26 @@ export async function GET(request: NextRequest) {
           const { data: allLineups } = await supabase
             .from('lineups')
             .select('user_id, total_points')
-            .eq('room_id', room.id)
-            .eq('gameweek', room.gameweek || 1)
+            .eq('room_id', (room as any).id)
+            .eq('gameweek', (room as any).gameweek || 1)
             .order('total_points', { ascending: false });
 
           const userRank = allLineups?.findIndex(l => l.user_id === userId) + 1 || null;
 
           roomsWithStats.push({
             room: {
-              id: room.id,
-              roomCode: room.room_code,
-              name: room.name,
-              description: room.description,
-              maxPlayers: room.max_players,
+              id: (room as any).id,
+              roomCode: (room as any).room_code,
+              name: (room as any).name,
+              description: (room as any).description,
+              maxPlayers: (room as any).max_players,
               currentPlayers: memberCount || 0,
-              season: room.season,
-              gameweek: room.gameweek || 1,
-              isActive: room.is_active,
-              isPublic: room.is_public,
-              budgetLimit: room.budget_limit,
-              createdAt: room.created_at
+              season: (room as any).season,
+              gameweek: (room as any).gameweek || 1,
+              isActive: (room as any).is_active,
+              isPublic: (room as any).is_public,
+              budgetLimit: (room as any).budget_limit,
+              createdAt: (room as any).created_at
             },
             userStats: {
               joinedAt: membership.joined_at,
@@ -122,23 +135,23 @@ export async function GET(request: NextRequest) {
           });
 
         } catch (roomError) {
-          console.error(`处理房间 ${room.id} 统计失败:`, roomError);
+          console.error(`处理房间 ${(room as any).id} 统计失败:`, roomError);
           
           // 即使处理失败也要显示基本房间信息
           roomsWithStats.push({
             room: {
-              id: room.id,
-              roomCode: room.room_code,
-              name: room.name,
-              description: room.description,
-              maxPlayers: room.max_players,
-              currentPlayers: room.current_players,
-              season: room.season,
-              gameweek: room.gameweek || 1,
-              isActive: room.is_active,
-              isPublic: room.is_public,
-              budgetLimit: room.budget_limit,
-              createdAt: room.created_at
+              id: (room as any).id,
+              roomCode: (room as any).room_code,
+              name: (room as any).name,
+              description: (room as any).description,
+              maxPlayers: (room as any).max_players,
+              currentPlayers: (room as any).current_players,
+              season: (room as any).season,
+              gameweek: (room as any).gameweek || 1,
+              isActive: (room as any).is_active,
+              isPublic: (room as any).is_public,
+              budgetLimit: (room as any).budget_limit,
+              createdAt: (room as any).created_at
             },
             userStats: {
               joinedAt: membership.joined_at,
