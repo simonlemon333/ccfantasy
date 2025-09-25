@@ -118,9 +118,10 @@ export async function POST(request: NextRequest) {
         
         // Batch insert fixtures to reduce database calls
         const fixtureDataBatch = fplFixtures.map(fplFixture => ({
+          id: fplFixture.id,
           gameweek: fplFixture.event,
-          home_team_id: fplApi.mapTeamToUuid(fplFixture.team_h),
-          away_team_id: fplApi.mapTeamToUuid(fplFixture.team_a),
+          home_team: fplApi.getTeamShortName(fplFixture.team_h),
+          away_team: fplApi.getTeamShortName(fplFixture.team_a),
           kickoff_time: fplFixture.kickoff_time,
           home_score: fplFixture.team_h_score || null,
           away_score: fplFixture.team_a_score || null,
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest) {
           let { data: insertedFixtures, error: fixtureError } = await supabase
             .from('fixtures')
             .upsert(fixtureDataBatch, {
-              onConflict: 'unique_fixture_per_gameweek'
+              onConflict: 'id'
             })
             .select('id');
             
@@ -147,9 +148,7 @@ export async function POST(request: NextRequest) {
               const { data: existingFixture } = await supabase
                 .from('fixtures')
                 .select('id')
-                .eq('gameweek', fixtureData.gameweek)
-                .eq('home_team_id', fixtureData.home_team_id)
-                .eq('away_team_id', fixtureData.away_team_id)
+                .eq('id', fixtureData.id)
                 .single();
               
               if (existingFixture) {

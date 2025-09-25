@@ -20,8 +20,11 @@ export default function Header() {
             <Link href="/my-team" className="text-gray-600 hover:text-blue-600 font-medium transition">
               我的球队
             </Link>
+            <Link href="/my-leagues" className="text-gray-600 hover:text-blue-600 font-medium transition">
+              我的联赛
+            </Link>
             <Link href="/leagues" className="text-gray-600 hover:text-blue-600 font-medium transition">
-              联赛
+              联赛市场
             </Link>
             <Link href="/players" className="text-gray-600 hover:text-blue-600 font-medium transition">
               球员市场
@@ -84,11 +87,18 @@ export default function Header() {
                 我的球队
               </Link>
               <Link
+                href="/my-leagues"
+                className="text-gray-600 hover:text-blue-600 font-medium transition py-2 px-2 rounded hover:bg-gray-50"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                我的联赛
+              </Link>
+              <Link
                 href="/leagues"
                 className="text-gray-600 hover:text-blue-600 font-medium transition py-2 px-2 rounded hover:bg-gray-50"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                联赛
+                联赛市场
               </Link>
               <Link
                 href="/players"

@@ -35,19 +35,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Build query with filters
     let query = queryClient
       .from('lineups')
       .select(`
         *,
         users(id, username, display_name),
-        rooms(id, name, room_code),
-        lineup_players(
-          *,
-          players(
-            id, name, position, price, total_points, photo_url,
-            teams(short_name, name, logo_url, primary_color)
-          )
-        )
+        rooms(id, name, room_code)
       `);
 
     // Apply filters
@@ -71,6 +65,66 @@ export async function GET(request: NextRequest) {
     console.log('Query result:', { lineups: lineups?.length || 0, error });
 
     if (error) throw error;
+
+    // If we have lineups, fetch their players separately to avoid foreign key issues
+    if (lineups && lineups.length > 0) {
+      const lineupIds = lineups.map(lineup => lineup.id);
+
+      // Fetch lineup players
+      const { data: lineupPlayers, error: lpError } = await queryClient
+        .from('lineup_players')
+        .select('*')
+        .in('lineup_id', lineupIds);
+
+      if (lpError) {
+        console.error('Error fetching lineup players:', lpError);
+        throw lpError;
+      }
+
+      // Fetch player details if we have lineup players
+      if (lineupPlayers && lineupPlayers.length > 0) {
+        const playerIds = [...new Set(lineupPlayers.map(lp => lp.player_id))];
+
+        const { data: players, error: playersError } = await queryClient
+          .from('players')
+          .select('id, name, position, team, price, total_points, photo_url')
+          .in('id', playerIds);
+
+        if (playersError) {
+          console.error('Error fetching players:', playersError);
+          throw playersError;
+        }
+
+        // Create player lookup map
+        const playerMap = new Map();
+        if (players) {
+          players.forEach(player => {
+            playerMap.set(player.id, player);
+          });
+        }
+
+        // Attach player data to lineup players
+        lineupPlayers.forEach(lp => {
+          lp.players = playerMap.get(lp.player_id);
+        });
+      }
+
+      // Group lineup players by lineup_id
+      const lineupPlayersMap = new Map();
+      if (lineupPlayers) {
+        lineupPlayers.forEach(lp => {
+          if (!lineupPlayersMap.has(lp.lineup_id)) {
+            lineupPlayersMap.set(lp.lineup_id, []);
+          }
+          lineupPlayersMap.get(lp.lineup_id).push(lp);
+        });
+      }
+
+      // Attach lineup players to lineups
+      lineups.forEach(lineup => {
+        lineup.lineup_players = lineupPlayersMap.get(lineup.id) || [];
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -148,7 +202,7 @@ export async function POST(request: NextRequest) {
     const playerIds = players.map((p: PlayerSelection) => p.id);
     const { data: dbPlayers, error: playersError } = await supabase
       .from('players')
-      .select('id, position, team_id, price, is_available')
+      .select('id, position, team, price, is_available')
       .in('id', playerIds);
 
     if (playersError) throw playersError;
@@ -175,7 +229,7 @@ export async function POST(request: NextRequest) {
       return {
         id: clientPlayer.id,
         position: dbPlayer!.position,
-        team_id: dbPlayer!.team_id,
+        team_id: dbPlayer!.team,
         price: dbPlayer!.price,
         is_starter: clientPlayer.is_starter,
         is_captain: clientPlayer.is_captain,
@@ -340,20 +394,49 @@ export async function POST(request: NextRequest) {
       .select(`
         *,
         users(id, username, display_name),
-        rooms(id, name, room_code),
-        lineup_players(
-          *,
-          players(
-            id, name, position, price, total_points, photo_url,
-            teams(short_name, name, logo_url)
-          )
-        )
+        rooms(id, name, room_code)
       `)
       .eq('id', lineupId)
       .maybeSingle();
 
     if (fetchError) throw fetchError;
     if (!completeLineup) throw new Error('Failed to fetch lineup after save — row not found (possible RLS)');
+
+    // Fetch lineup players separately
+    const { data: lineupPlayers, error: lpError } = await supabaseUser
+      .from('lineup_players')
+      .select('*')
+      .eq('lineup_id', lineupId);
+
+    if (lpError) throw lpError;
+
+    // Fetch player details if we have lineup players
+    if (lineupPlayers && lineupPlayers.length > 0) {
+      const playerIds = [...new Set(lineupPlayers.map(lp => lp.player_id))];
+
+      const { data: players, error: playersError } = await supabaseUser
+        .from('players')
+        .select('id, name, position, team, price, total_points, photo_url')
+        .in('id', playerIds);
+
+      if (playersError) throw playersError;
+
+      // Create player lookup map
+      const playerMap = new Map();
+      if (players) {
+        players.forEach(player => {
+          playerMap.set(player.id, player);
+        });
+      }
+
+      // Attach player data to lineup players
+      lineupPlayers.forEach(lp => {
+        lp.players = playerMap.get(lp.player_id);
+      });
+    }
+
+    // Attach lineup players to the complete lineup
+    completeLineup.lineup_players = lineupPlayers || [];
 
     return NextResponse.json({
       success: true,
