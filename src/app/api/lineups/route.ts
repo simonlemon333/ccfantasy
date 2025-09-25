@@ -61,14 +61,14 @@ export async function GET(request: NextRequest) {
     // Order by latest first
     query = query.order('created_at', { ascending: false });
 
-    const { data: lineups, error } = await query;
-    console.log('Query result:', { lineups: lineups?.length || 0, error });
+    const { data: lineupsData, error } = await query;
+    console.log('Query result:', { lineups: lineupsData?.length || 0, error });
 
     if (error) throw error;
 
     // If we have lineups, fetch their players separately to avoid foreign key issues
-    if (lineups && lineups.length > 0) {
-      const lineupIds = lineups.map(lineup => lineup.id);
+    if (lineupsData && lineupsData.length > 0) {
+      const lineupIds = lineupsData.map(lineup => lineup.id);
 
       // Fetch lineup players
       const { data: lineupPlayers, error: lpError } = await queryClient
@@ -121,14 +121,14 @@ export async function GET(request: NextRequest) {
       }
 
       // Attach lineup players to lineups
-      lineups.forEach(lineup => {
+      lineupsData.forEach(lineup => {
         lineup.lineup_players = lineupPlayersMap.get(lineup.id) || [];
       });
     }
 
     return NextResponse.json({
       success: true,
-      data: lineups
+      data: lineupsData
     });
 
   } catch (error) {
