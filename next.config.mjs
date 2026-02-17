@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
 const nextConfig = {
+  turbopack: {},
   webpack: (config) => {
     config.resolveLoader ??= {};
     config.resolveLoader.alias ??= {};
