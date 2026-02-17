@@ -2,9 +2,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { legalDataAggregator } from '@/lib/legalDataSources';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // GET /api/admin/data-sources - Check data source status and gaps
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     console.log('Checking data sources and gaps...');
 
@@ -109,6 +113,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/data-sources - Fill data gaps using backup APIs
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { action } = await request.json();
     

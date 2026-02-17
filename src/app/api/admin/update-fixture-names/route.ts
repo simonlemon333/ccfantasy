@@ -1,9 +1,13 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // POST /api/admin/update-fixture-names - Update fixtures with team names
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     console.log('Starting fixture names update...');
 
@@ -121,6 +125,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/update-fixture-names - Check fixture names status
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     // Get fixtures with and without names
     const { data: allFixtures } = await supabase

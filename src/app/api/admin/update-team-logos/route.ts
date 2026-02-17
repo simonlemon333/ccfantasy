@@ -1,9 +1,13 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // POST /api/admin/update-team-logos - Update team logos from free sources
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     console.log('Updating team logos from free sources...');
 
@@ -181,6 +185,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/update-team-logos - Check team logo status
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { data: teams } = await supabase
       .from('teams')

@@ -1,9 +1,13 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // GET /api/admin/check-teams - Check current teams in database
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { data: teams, error } = await supabase
       .from('teams')

@@ -1,8 +1,12 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { userId = '60446064-067a-439f-b5e1-8dd320833b95', roomId = 'd15f062a-adfd-42bc-b8d8-e4144a18c1c4' } = await request.json();
     

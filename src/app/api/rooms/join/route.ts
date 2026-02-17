@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAuth } from '@/lib/requireAuth';
 
 // POST /api/rooms/join - Join room by room code
 export async function POST(request: NextRequest) {
   try {
+    // Verify identity from token
+    const authResult = await requireAuth(request);
+    if (authResult.error) return authResult.error;
+
     const body = await request.json();
-    const { roomCode, userId } = body;
+    const { roomCode } = body;
+    // Use verified user ID from token, not from body
+    const userId = authResult.user.id;
 
     // Validation
-    if (!roomCode || !userId) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Missing required fields: roomCode, userId' 
+    if (!roomCode) {
+      return NextResponse.json({
+        success: false,
+        error: 'Missing required field: roomCode'
       }, { status: 400 });
     }
 

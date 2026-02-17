@@ -1,160 +1,221 @@
 // @ts-nocheck
-// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
+import { fetchPlayerGameweekStats } from '@/lib/fplPlayerStats';
 
-// POST /api/admin/populate-player-events - 填充球员比赛事件数据
+// POST /api/admin/populate-player-events - Populate player events from real FPL data
 export async function POST(request: NextRequest) {
-  try {
-    console.log('开始填充player_events数据...');
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
 
-    const footballDataKey = process.env.FOOTBALL_DATA_API_KEY;
-    
-    if (!footballDataKey) {
-      return NextResponse.json({
-        success: false,
-        error: 'FOOTBALL_DATA_API_KEY not configured'
-      }, { status: 400 });
+  try {
+    const body = await request.json().catch(() => ({}));
+    const targetGameweek = body.gameweek;
+
+    console.log('Starting player_events population from FPL data...');
+
+    // Get finished fixtures, optionally filtered by gameweek
+    let fixturesQuery = supabase
+      .from('fixtures')
+      .select('id, gameweek, home_team, away_team, home_score, away_score')
+      .eq('finished', true)
+      .order('gameweek');
+
+    if (targetGameweek) {
+      fixturesQuery = fixturesQuery.eq('gameweek', targetGameweek);
+    } else {
+      fixturesQuery = fixturesQuery.limit(10);
     }
 
-    // 获取已完成的比赛
-    const { data: finishedFixtures, error: fixturesError } = await supabase
-      .from('fixtures')
-      .select(`
-        id,
-        gameweek,
-        home_team_id,
-        away_team_id,
-        home_team:teams!fixtures_home_team_id_fkey(name, short_name),
-        away_team:teams!fixtures_away_team_id_fkey(name, short_name)
-      `)
-      .eq('finished', true)
-      .order('gameweek')
-      .limit(10); // 先处理前10场比赛
+    const { data: finishedFixtures, error: fixturesError } = await fixturesQuery;
 
     if (fixturesError) {
-      throw new Error(`获取比赛数据失败: ${fixturesError.message}`);
+      throw new Error(`Failed to fetch fixtures: ${fixturesError.message}`);
     }
 
-    console.log(`找到${finishedFixtures?.length || 0}场已完成比赛`);
+    console.log(`Found ${finishedFixtures?.length || 0} finished fixtures`);
 
-    // 获取球员数据用于映射
+    // Get all players with fpl_id
     const { data: players, error: playersError } = await supabase
       .from('players')
-      .select('id, name, team_id');
+      .select('id, name, team, position, fpl_id');
 
     if (playersError) {
-      throw new Error(`获取球员数据失败: ${playersError.message}`);
+      throw new Error(`Failed to fetch players: ${playersError.message}`);
     }
+
+    // Build team -> players map
+    const playersByTeam = new Map<string, typeof players>();
+    for (const player of players || []) {
+      const teamPlayers = playersByTeam.get(player.team) || [];
+      teamPlayers.push(player);
+      playersByTeam.set(player.team, teamPlayers);
+    }
+
+    // Collect unique gameweeks from fixtures
+    const gameweeks = [...new Set((finishedFixtures || []).map(f => f.gameweek))];
 
     let totalEventsCreated = 0;
     const processedMatches = [];
 
-    // 为每场比赛生成模拟的比赛事件
-    for (const fixture of finishedFixtures || []) {
-      try {
-        console.log(`处理比赛: ${(fixture.home_team as any)?.short_name} vs ${(fixture.away_team as any)?.short_name}`);
+    for (const gw of gameweeks) {
+      const gwFixtures = finishedFixtures!.filter(f => f.gameweek === gw);
 
-        // 获取参赛球队的球员
-        const homeTeamPlayers = players?.filter(p => p.team_id === fixture.home_team_id) || [];
-        const awayTeamPlayers = players?.filter(p => p.team_id === fixture.away_team_id) || [];
+      // Get all involved teams' players with fpl_ids
+      const involvedTeams = new Set<string>();
+      for (const fixture of gwFixtures) {
+        if (fixture.home_team) involvedTeams.add(fixture.home_team);
+        if (fixture.away_team) involvedTeams.add(fixture.away_team);
+      }
 
+      const involvedPlayers = (players || []).filter(
+        p => p.fpl_id && involvedTeams.has(p.team)
+      );
+
+      if (involvedPlayers.length === 0) continue;
+
+      // Fetch real FPL stats for these players
+      const fplIds = involvedPlayers.map(p => p.fpl_id!);
+      const statsMap = await fetchPlayerGameweekStats(fplIds, gw);
+
+      // Delete existing events for these fixtures to avoid duplicates
+      const fixtureIds = gwFixtures.map(f => f.id);
+      await supabase
+        .from('player_events')
+        .delete()
+        .in('fixture_id', fixtureIds);
+
+      // Generate events from real FPL stats
+      for (const fixture of gwFixtures) {
         const matchEvents = [];
 
-        // 基于真实比分生成事件 (这里简化处理，实际应该从Football-Data.org获取)
-        const homeGoals = Math.floor(Math.random() * 3); // 0-2个进球
-        const awayGoals = Math.floor(Math.random() * 3); // 0-2个进球
+        const homePlayers = (playersByTeam.get(fixture.home_team) || []).filter(p => p.fpl_id);
+        const awayPlayers = (playersByTeam.get(fixture.away_team) || []).filter(p => p.fpl_id);
+        const allMatchPlayers = [...homePlayers, ...awayPlayers];
 
-        // 生成进球事件
-        for (let i = 0; i < homeGoals; i++) {
-          const randomPlayer = homeTeamPlayers[Math.floor(Math.random() * Math.min(11, homeTeamPlayers.length))];
-          if (randomPlayer) {
+        for (const player of allMatchPlayers) {
+          const stats = statsMap.get(player.fpl_id!);
+          if (!stats || stats.minutes === 0) continue;
+
+          // Goals
+          for (let i = 0; i < stats.goals_scored; i++) {
+            const goalPoints = player.position === 'GK' || player.position === 'DEF' ? 6
+              : player.position === 'MID' ? 5 : 4;
             matchEvents.push({
               fixture_id: fixture.id,
-              player_id: randomPlayer.id,
+              player_id: player.id,
               event_type: 'goal',
-              minute: Math.floor(Math.random() * 90) + 1,
-              points: 6, // 进球6分
-              created_at: new Date().toISOString()
+              points: goalPoints,
             });
           }
-        }
 
-        for (let i = 0; i < awayGoals; i++) {
-          const randomPlayer = awayTeamPlayers[Math.floor(Math.random() * Math.min(11, awayTeamPlayers.length))];
-          if (randomPlayer) {
+          // Assists
+          for (let i = 0; i < stats.assists; i++) {
             matchEvents.push({
               fixture_id: fixture.id,
-              player_id: randomPlayer.id,
-              event_type: 'goal',
-              minute: Math.floor(Math.random() * 90) + 1,
-              points: 6,
-              created_at: new Date().toISOString()
-            });
-          }
-        }
-
-        // 生成一些助攻事件
-        const assists = Math.floor(Math.random() * (homeGoals + awayGoals));
-        for (let i = 0; i < assists; i++) {
-          const allPlayers = [...homeTeamPlayers, ...awayTeamPlayers];
-          const randomPlayer = allPlayers[Math.floor(Math.random() * Math.min(22, allPlayers.length))];
-          if (randomPlayer) {
-            matchEvents.push({
-              fixture_id: fixture.id,
-              player_id: randomPlayer.id,
+              player_id: player.id,
               event_type: 'assist',
-              minute: Math.floor(Math.random() * 90) + 1,
               points: 3,
-              created_at: new Date().toISOString()
             });
           }
-        }
 
-        // 生成黄牌事件
-        const yellowCards = Math.floor(Math.random() * 4); // 0-3张黄牌
-        for (let i = 0; i < yellowCards; i++) {
-          const allPlayers = [...homeTeamPlayers, ...awayTeamPlayers];
-          const randomPlayer = allPlayers[Math.floor(Math.random() * Math.min(22, allPlayers.length))];
-          if (randomPlayer) {
+          // Clean sheets
+          if (stats.clean_sheets > 0) {
+            const csPoints = player.position === 'GK' || player.position === 'DEF' ? 4
+              : player.position === 'MID' ? 1 : 0;
+            if (csPoints > 0) {
+              matchEvents.push({
+                fixture_id: fixture.id,
+                player_id: player.id,
+                event_type: 'clean_sheet',
+                points: csPoints,
+              });
+            }
+          }
+
+          // Yellow cards
+          for (let i = 0; i < stats.yellow_cards; i++) {
             matchEvents.push({
               fixture_id: fixture.id,
-              player_id: randomPlayer.id,
+              player_id: player.id,
               event_type: 'yellow_card',
-              minute: Math.floor(Math.random() * 90) + 1,
               points: -1,
-              created_at: new Date().toISOString()
+            });
+          }
+
+          // Red cards
+          for (let i = 0; i < stats.red_cards; i++) {
+            matchEvents.push({
+              fixture_id: fixture.id,
+              player_id: player.id,
+              event_type: 'red_card',
+              points: -3,
+            });
+          }
+
+          // Own goals
+          for (let i = 0; i < stats.own_goals; i++) {
+            matchEvents.push({
+              fixture_id: fixture.id,
+              player_id: player.id,
+              event_type: 'own_goal',
+              points: -2,
+            });
+          }
+
+          // Penalties missed
+          for (let i = 0; i < stats.penalties_missed; i++) {
+            matchEvents.push({
+              fixture_id: fixture.id,
+              player_id: player.id,
+              event_type: 'penalty_miss',
+              points: -2,
+            });
+          }
+
+          // Bonus points
+          if (stats.bonus > 0) {
+            matchEvents.push({
+              fixture_id: fixture.id,
+              player_id: player.id,
+              event_type: 'bonus',
+              points: stats.bonus,
+            });
+          }
+
+          // Saves (GK only, 1 point per 3 saves)
+          if (player.position === 'GK' && stats.saves >= 3) {
+            matchEvents.push({
+              fixture_id: fixture.id,
+              player_id: player.id,
+              event_type: 'save',
+              points: Math.floor(stats.saves / 3),
             });
           }
         }
 
-        // 插入比赛事件
+        // Insert events
         if (matchEvents.length > 0) {
           const { error: insertError } = await supabase
             .from('player_events')
             .insert(matchEvents);
 
           if (insertError) {
-            console.error(`插入事件失败 ${fixture.home_team?.short_name} vs ${fixture.away_team?.short_name}:`, insertError);
+            console.error(`Failed to insert events for fixture ${fixture.id}:`, insertError);
           } else {
             totalEventsCreated += matchEvents.length;
             processedMatches.push({
-              match: `${fixture.home_team?.short_name} vs ${fixture.away_team?.short_name}`,
+              match: `${fixture.home_team} vs ${fixture.away_team}`,
               events: matchEvents.length,
               gameweek: fixture.gameweek
             });
           }
         }
-
-        // 添加延迟避免过快请求
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-      } catch (matchError) {
-        console.error(`处理比赛失败:`, matchError);
       }
     }
 
-    // 获取最终统计
+    // Get final stats
     const { count: totalEvents } = await supabase
       .from('player_events')
       .select('*', { count: 'exact', head: true });
@@ -166,23 +227,24 @@ export async function POST(request: NextRequest) {
         processedMatches: processedMatches.length,
         matchDetails: processedMatches,
         totalEventsInDatabase: totalEvents,
-        sampleEvents: processedMatches.slice(0, 3)
       },
-      message: `✅ 成功创建 ${totalEventsCreated} 个球员比赛事件，处理了 ${processedMatches.length} 场比赛`
+      message: `Created ${totalEventsCreated} player events from real FPL data across ${processedMatches.length} matches`
     });
 
   } catch (error) {
-    console.error('填充player_events错误:', error);
+    console.error('populate-player-events error:', error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : '填充失败',
-      suggestion: 'Check FOOTBALL_DATA_API_KEY configuration and database connectivity'
+      error: error instanceof Error ? error.message : 'Failed to populate events',
     }, { status: 500 });
   }
 }
 
-// GET /api/admin/populate-player-events - 检查当前player_events状态
+// GET /api/admin/populate-player-events - Check current player_events status
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { count: totalEvents } = await supabase
       .from('player_events')
@@ -190,59 +252,21 @@ export async function GET(request: NextRequest) {
 
     const { data: sampleEvents } = await supabase
       .from('player_events')
-      .select(`
-        *,
-        player:players(name, position),
-        fixture:fixtures(
-          gameweek,
-          home_team:teams!fixtures_home_team_id_fkey(short_name),
-          away_team:teams!fixtures_away_team_id_fkey(short_name)
-        )
-      `)
+      .select('*')
       .limit(5);
-
-    // 按比赛分组统计
-    const { data: eventsByFixture } = await supabase
-      .from('player_events')
-      .select(`
-        fixture_id,
-        event_type,
-        fixture:fixtures(
-          gameweek,
-          home_team:teams!fixtures_home_team_id_fkey(short_name),
-          away_team:teams!fixtures_away_team_id_fkey(short_name)
-        )
-      `);
-
-    const fixtureStats = {};
-    eventsByFixture?.forEach(event => {
-      const fixtureId = event.fixture_id;
-      if (!fixtureStats[fixtureId]) {
-        fixtureStats[fixtureId] = {
-          fixture: event.fixture,
-          eventCounts: { goal: 0, assist: 0, yellow_card: 0, red_card: 0, clean_sheet: 0 }
-        };
-      }
-      fixtureStats[fixtureId].eventCounts[event.event_type] = (fixtureStats[fixtureId].eventCounts[event.event_type] || 0) + 1;
-    });
 
     return NextResponse.json({
       success: true,
       data: {
         totalEvents,
         sampleEvents,
-        eventsByFixture: Object.values(fixtureStats).slice(0, 5),
-        eventTypeDistribution: eventsByFixture?.reduce((acc, event) => {
-          acc[event.event_type] = (acc[event.event_type] || 0) + 1;
-          return acc;
-        }, {})
       }
     });
 
   } catch (error) {
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : '检查失败'
+      error: error instanceof Error ? error.message : 'Check failed'
     }, { status: 500 });
   }
 }

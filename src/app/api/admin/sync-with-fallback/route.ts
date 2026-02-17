@@ -1,9 +1,13 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // POST /api/admin/sync-with-fallback - Sync with automatic fallback to Football-Data.org
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { gameweek = 1 } = await request.json();
     
@@ -178,6 +182,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/sync-with-fallback - Check fallback system status
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const footballDataConfigured = !!process.env.FOOTBALL_DATA_API_KEY;
     

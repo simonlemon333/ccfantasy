@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAuth } from '@/lib/requireAuth';
 
 // GET /api/rooms - Get rooms for user or public rooms
 export async function GET(request: NextRequest) {
@@ -79,22 +80,29 @@ export async function GET(request: NextRequest) {
 // POST /api/rooms - Create a new room
 export async function POST(request: NextRequest) {
   try {
+    // Verify identity from token
+    const authResult = await requireAuth(request);
+    if (authResult.error) return authResult.error;
+    const verifiedUserId = authResult.user.id;
+
     const body = await request.json();
     console.log('Create room request body:', body); // Debug log
-    const { 
-      name, 
-      description, 
-      createdBy, 
-      max_players: maxPlayers = 10, 
-      is_public: isPublic = false, 
-      budget_limit: budgetLimit = 100.0 
+    const {
+      name,
+      description,
+      max_players: maxPlayers = 10,
+      is_public: isPublic = false,
+      budget_limit: budgetLimit = 100.0
     } = body;
 
+    // Use verified user ID, not body-provided createdBy
+    const createdBy = verifiedUserId;
+
     // Validation
-    if (!name || !createdBy) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Missing required fields: name, createdBy' 
+    if (!name) {
+      return NextResponse.json({
+        success: false,
+        error: 'Missing required field: name'
       }, { status: 400 });
     }
 

@@ -1,8 +1,12 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // GET /api/admin/setup-free-apis - Get setup guide for free APIs
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const setupGuide = {
       title: '免费API数据源配置指南',
@@ -147,6 +151,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/setup-free-apis - Test free API connections
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { action } = await request.json();
 

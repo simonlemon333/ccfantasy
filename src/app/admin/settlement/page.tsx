@@ -5,6 +5,7 @@ import Layout from '../../../components/Layout';
 import Card from '../../../components/ui/Card';
 import Button from '../../../components/ui/Button';
 import { useAuth } from '../../../hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 
 interface SettlementStatus {
   gameweek: number;
@@ -26,12 +27,23 @@ export default function SettlementPage() {
   const [settling, setSettling] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
 
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  };
 
   useEffect(() => {
-    fetchRooms();
-    fetchStatus();
-  }, [selectedGameweek, selectedRoom]);
+    if (user) {
+      fetchRooms();
+      fetchStatus();
+    }
+  }, [user, selectedGameweek, selectedRoom]);
 
   const fetchRooms = async () => {
     try {
@@ -56,7 +68,8 @@ export default function SettlementPage() {
         params.append('roomId', selectedRoom);
       }
 
-      const response = await fetch(`/api/admin/settlement?${params}`);
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/settlement?${params}`, { headers });
       const result = await response.json();
       
       if (result.success) {
@@ -87,9 +100,10 @@ export default function SettlementPage() {
     addLog(`开始结算第 ${selectedGameweek} 轮${forceRecalculate ? ' (强制重新计算)' : ''}`);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/admin/settlement', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           gameweek: selectedGameweek,
           roomId: selectedRoom !== 'ALL' ? selectedRoom : null,

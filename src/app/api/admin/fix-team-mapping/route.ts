@@ -1,9 +1,13 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // POST /api/admin/fix-team-mapping - Fix immediate team mapping issues
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     console.log('Starting immediate team mapping fixes...');
     
@@ -159,6 +163,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/fix-team-mapping - Preview what fixes would be applied
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { data: teams } = await supabase
       .from('teams')

@@ -1,9 +1,13 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // POST /api/admin/sync-enhanced-fixtures - Enhanced fixtures sync with Football-Data.org fallback
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { gameweek = 1, forceFootballData = false } = await request.json();
     
@@ -250,6 +254,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/sync-enhanced-fixtures - Check sync status and recommendations
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const footballDataConfigured = !!process.env.FOOTBALL_DATA_API_KEY;
     

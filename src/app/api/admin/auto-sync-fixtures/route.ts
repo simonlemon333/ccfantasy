@@ -2,9 +2,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { fplApi } from '@/lib/fplApi';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // POST /api/admin/auto-sync-fixtures - Auto-sync fixtures with live scores
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     console.log('Starting auto-sync for live fixtures...');
 
@@ -105,6 +109,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/auto-sync-fixtures - Check sync status and recommendation
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const recommendation = {
       currentSolution: 'FPL API (Primary)',

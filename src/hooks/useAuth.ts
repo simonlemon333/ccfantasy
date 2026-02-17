@@ -1,13 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import type { AuthUser } from '../lib/auth';
 import { auth } from '../lib/auth';
+
+const PROTECTED_PATHS = ['/my-team', '/admin', '/leagues'];
 
 // Custom hook for authentication state management
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     // Get initial user
@@ -25,6 +30,13 @@ export function useAuth() {
     // Cleanup subscription
     return () => subscription.unsubscribe();
   }, []);
+
+  // Redirect to login if on a protected page and not authenticated
+  useEffect(() => {
+    if (!loading && !user && PROTECTED_PATHS.some(p => pathname?.startsWith(p))) {
+      router.replace('/login');
+    }
+  }, [loading, user, pathname, router]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);

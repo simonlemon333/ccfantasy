@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         saves: fplPlayer.saves,
         bonus_points: fplPlayer.bonus,
         photo_url: photoUrl,
+        fpl_id: fplPlayer.id,
         updated_at: new Date().toISOString()
       };
 

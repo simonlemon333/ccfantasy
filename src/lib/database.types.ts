@@ -151,6 +151,7 @@ export interface Database {
           saves: number;
           bonus_points: number;
           photo_url: string | null;      // Player photo URL
+          fpl_id: number | null;         // FPL element ID for API lookups
           is_available: boolean;
           created_at: string;
           updated_at: string;
@@ -172,6 +173,7 @@ export interface Database {
           saves?: number;
           bonus_points?: number;
           photo_url?: string | null;
+          fpl_id?: number | null;
           is_available?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -192,6 +194,7 @@ export interface Database {
           saves?: number;
           bonus_points?: number;
           photo_url?: string | null;
+          fpl_id?: number | null;
           is_available?: boolean;
           updated_at?: string;
         };

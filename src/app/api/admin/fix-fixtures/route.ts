@@ -1,9 +1,13 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // POST /api/admin/fix-fixtures - Fix inconsistent fixture data
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     console.log('Starting fixtures data fix...');
 
@@ -106,6 +110,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/fix-fixtures - Check fixture data consistency
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     // Get all fixtures with statistics
     const { data: fixtures, error } = await supabase

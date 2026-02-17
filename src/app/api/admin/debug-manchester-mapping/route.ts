@@ -1,8 +1,12 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
 // GET /api/admin/debug-manchester-mapping - Debug Manchester teams mapping
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const footballDataKey = process.env.FOOTBALL_DATA_API_KEY;
     

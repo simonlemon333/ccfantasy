@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Layout from '../../components/Layout';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import { useAuth } from '../../hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 
 interface SyncStatus {
   totalPlayers: number;
@@ -17,17 +20,61 @@ interface SyncStatus {
   };
 }
 
+const ADMIN_USER_IDS = (process.env.NEXT_PUBLIC_ADMIN_USER_IDS || '').split(',').filter(Boolean);
+
 export default function AdminPage() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<any>(null);
   const [fixtureManagement, setFixtureManagement] = useState(false);
   const [systemStatus, setSystemStatus] = useState<any>(null);
+  const { user, loading } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
-    fetchSyncStatus();
-    fetchSystemStatus();
-  }, []);
+    if (!loading && !user) {
+      router.replace('/login');
+      return;
+    }
+    if (user) {
+      fetchSyncStatus();
+      fetchSystemStatus();
+    }
+  }, [user, loading]);
+
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  };
+
+  if (loading) {
+    return (
+      <Layout title="数据管理">
+        <div className="container mx-auto px-6 py-12 text-center">
+          <div className="text-2xl">加载中...</div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!user) {
+    return null; // Will redirect
+  }
+
+  if (ADMIN_USER_IDS.length > 0 && !ADMIN_USER_IDS.includes(user.id)) {
+    return (
+      <Layout title="数据管理">
+        <div className="container mx-auto px-6 py-12 text-center">
+          <div className="text-2xl text-red-600">Access Denied</div>
+          <p className="text-gray-600 mt-2">You do not have admin access.</p>
+        </div>
+      </Layout>
+    );
+  }
 
   const fetchSyncStatus = async () => {
     try {
@@ -43,8 +90,10 @@ export default function AdminPage() {
 
   const fetchSystemStatus = async () => {
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/admin/check-table-structure', {
-        method: 'POST'
+        method: 'POST',
+        headers
       });
       const result = await response.json();
       if (result.success) {
@@ -60,8 +109,10 @@ export default function AdminPage() {
     setSyncResult(null);
     
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/sync/fpl', {
-        method: 'POST'
+        method: 'POST',
+        headers
       });
       const result = await response.json();
       setSyncResult(result);
@@ -83,8 +134,10 @@ export default function AdminPage() {
   const quickUpdateFixtures = async () => {
     setSyncing(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/admin/quick-fixtures-update', {
-        method: 'POST'
+        method: 'POST',
+        headers
       });
 
       const result = await response.json();
@@ -107,8 +160,10 @@ export default function AdminPage() {
   const simpleUpdateFixtures = async () => {
     setSyncing(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/admin/simple-fixtures-update', {
-        method: 'POST'
+        method: 'POST',
+        headers
       });
 
       const result = await response.json();
@@ -131,8 +186,10 @@ export default function AdminPage() {
   const debugFixturesUpdate = async () => {
     setSyncing(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/admin/debug-fixtures-update', {
-        method: 'POST'
+        method: 'POST',
+        headers
       });
 
       const result = await response.json();
@@ -171,8 +228,10 @@ export default function AdminPage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
 
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/sync/full', {
         method: 'POST',
+        headers,
         signal: controller.signal
       });
 
@@ -214,8 +273,10 @@ export default function AdminPage() {
     setSyncing(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/sync/teams', {
-        method: 'POST'
+        method: 'POST',
+        headers
       });
 
       if (!response.ok) {
@@ -251,9 +312,10 @@ export default function AdminPage() {
     setSyncing(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/admin/cleanup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ action: 'cleanup_old_players' })
       });
 
@@ -290,9 +352,10 @@ export default function AdminPage() {
     setSyncing(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/admin/cleanup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ action: 'cleanup_duplicate_players' })
       });
 

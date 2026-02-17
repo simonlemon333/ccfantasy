@@ -1,10 +1,14 @@
-// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { calculatePlayerGameweekPoints } from '@/lib/scoringRules';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
+import { fetchPlayerGameweekStats } from '@/lib/fplPlayerStats';
 
 // POST /api/admin/settlement - Calculate and settle gameweek points
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { gameweek, roomId, forceRecalculate = false } = await request.json();
 
@@ -22,7 +26,7 @@ export async function POST(request: NextRequest) {
       playersProcessed: 0,
       lineupsUpdated: 0,
       totalPointsCalculated: 0,
-      errors: []
+      errors: [] as string[]
     };
 
     // Step 1: Get all finished fixtures for the gameweek
@@ -54,6 +58,7 @@ export async function POST(request: NextRequest) {
         captain_id,
         vice_captain_id,
         gameweek_points,
+        total_points,
         lineup_players!inner(
           id,
           player_id,
@@ -67,7 +72,8 @@ export async function POST(request: NextRequest) {
             id,
             name,
             position,
-            team_id
+            team_id,
+            fpl_id
           )
         )
       `)
@@ -91,50 +97,86 @@ export async function POST(request: NextRequest) {
 
     console.log(`Found ${lineups.length} lineups to process`);
 
-    // Step 3: Process each lineup
+    // Step 3: Collect all unique fpl_ids and fetch real stats from FPL API
+    const allFplIds = new Set<number>();
+    for (const lineup of lineups) {
+      for (const lp of (lineup as any).lineup_players) {
+        const fplId = lp.players?.fpl_id;
+        if (fplId) allFplIds.add(fplId);
+      }
+    }
+
+    console.log(`Fetching FPL stats for ${allFplIds.size} unique players...`);
+    const fplStatsMap = await fetchPlayerGameweekStats(Array.from(allFplIds), gameweek);
+    console.log(`Got FPL stats for ${fplStatsMap.size} players`);
+
+    // Step 4: Process each lineup — TWO-PASS approach for captain/vc
     for (const lineup of lineups) {
       try {
         console.log(`Processing lineup ${lineup.id} for user ${lineup.user_id}`);
 
-        let lineupTotalPoints = 0;
-        const playerUpdates = [];
+        const lineupPlayers = (lineup as any).lineup_players as any[];
 
-        // Process each player in the lineup
-        for (const lineupPlayer of lineup.lineup_players) {
+        // --- PASS 1: Calculate base points for all players (no captain multiplier) ---
+        const basePointsMap = new Map<string, number>(); // lineupPlayer.id -> base points
+        const minutesMap = new Map<string, number>(); // lineupPlayer.id -> minutes played
+
+        for (const lineupPlayer of lineupPlayers) {
           const player = lineupPlayer.players;
-          
-          console.log(`Processing player ${player.name} (${player.position})`);
+          const fplId = player?.fpl_id;
+
+          // Get real minutes from FPL stats (Bug #1 fix)
+          let minutesPlayed = 0;
+          if (fplId && fplStatsMap.has(fplId)) {
+            minutesPlayed = fplStatsMap.get(fplId)!.minutes;
+          }
+          minutesMap.set(lineupPlayer.id, minutesPlayed);
 
           // Get player events for this gameweek
           const { data: playerEvents, error: eventsError } = await supabase
             .from('player_events')
             .select('*')
             .eq('player_id', player.id)
-            .in('fixture_id', fixtures.map(f => f.id));
+            .in('fixture_id', fixtures.map((f: any) => f.id));
 
           if (eventsError) {
             console.error(`Error fetching events for player ${player.id}:`, eventsError);
             results.errors.push(`Failed to fetch events for player ${player.name}`);
+            basePointsMap.set(lineupPlayer.id, 0);
             continue;
           }
 
-          // Calculate player points for this gameweek
-          const playerPoints = calculatePlayerGameweekPoints(
+          // Calculate base player points (no captain multiplier yet)
+          const basePoints = calculatePlayerGameweekPoints(
             playerEvents || [],
             player.position as 'GK' | 'DEF' | 'MID' | 'FWD',
-            60 // TODO: Get actual minutes played from events
+            minutesPlayed
           );
 
-          // Apply captain/vice-captain multiplier
-          let finalPoints = playerPoints;
+          basePointsMap.set(lineupPlayer.id, basePoints);
+          results.playersProcessed++;
+        }
+
+        // --- PASS 2: Apply captain/vice-captain multipliers (Bug #3 fix) ---
+        // Check if captain actually played
+        const captainPlayer = lineupPlayers.find((lp: any) => lp.is_captain);
+        const captainMinutes = captainPlayer ? (minutesMap.get(captainPlayer.id) || 0) : 0;
+        const captainPlayed = captainMinutes > 0;
+
+        let lineupTotalPoints = 0;
+        const playerUpdates: { id: string; points_scored: number }[] = [];
+
+        for (const lineupPlayer of lineupPlayers) {
+          const basePoints = basePointsMap.get(lineupPlayer.id) || 0;
+          let finalPoints = basePoints;
+
           if (lineupPlayer.is_captain) {
-            finalPoints *= lineupPlayer.multiplier || 2;
-          } else if (lineupPlayer.is_vice_captain && !lineup.lineup_players.some(lp => lp.is_captain && lp.points_scored > 0)) {
-            // Vice-captain gets captain bonus if captain didn't play
-            finalPoints *= 2;
+            finalPoints = basePoints * (lineupPlayer.multiplier || 2);
+          } else if (lineupPlayer.is_vice_captain && !captainPlayed) {
+            // Vice-captain gets captain bonus ONLY if captain didn't play
+            finalPoints = basePoints * 2;
           }
 
-          // Only update if points changed or force recalculate
           if (forceRecalculate || lineupPlayer.points_scored !== finalPoints) {
             playerUpdates.push({
               id: lineupPlayer.id,
@@ -143,10 +185,9 @@ export async function POST(request: NextRequest) {
           }
 
           lineupTotalPoints += finalPoints;
-          results.playersProcessed++;
         }
 
-        // Step 4: Update lineup_players points
+        // Step 5: Update lineup_players points
         if (playerUpdates.length > 0) {
           for (const update of playerUpdates) {
             const { error: updateError } = await supabase
@@ -161,27 +202,37 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Step 5: Update lineup total points
-        const { error: lineupUpdateError } = await supabase
+        // Step 6: Update lineup gameweek_points and total_points separately (Bug #2 fix)
+        // First update gameweek_points
+        const { error: gwUpdateError } = await supabase
           .from('lineups')
-          .update({ 
-            gameweek_points: lineupTotalPoints,
-            total_points: supabase.rpc('increment_total_points', { 
-              lineup_id: lineup.id, 
-              points_to_add: lineupTotalPoints - (lineup.gameweek_points || 0)
-            })
-          })
+          .update({ gameweek_points: lineupTotalPoints })
           .eq('id', lineup.id);
 
-        if (lineupUpdateError) {
-          console.error(`Error updating lineup ${lineup.id}:`, lineupUpdateError);
-          results.errors.push(`Failed to update lineup ${lineup.id}`);
+        if (gwUpdateError) {
+          console.error(`Error updating gameweek_points for lineup ${lineup.id}:`, gwUpdateError);
+          results.errors.push(`Failed to update gameweek_points for lineup ${lineup.id}`);
+        }
+
+        // Then update total_points: old_total - old_gw + new_gw
+        const oldGwPoints = lineup.gameweek_points || 0;
+        const oldTotal = lineup.total_points || 0;
+        const newTotal = oldTotal - oldGwPoints + lineupTotalPoints;
+
+        const { error: totalUpdateError } = await supabase
+          .from('lineups')
+          .update({ total_points: newTotal })
+          .eq('id', lineup.id);
+
+        if (totalUpdateError) {
+          console.error(`Error updating total_points for lineup ${lineup.id}:`, totalUpdateError);
+          results.errors.push(`Failed to update total_points for lineup ${lineup.id}`);
         } else {
           results.lineupsUpdated++;
           results.totalPointsCalculated += lineupTotalPoints;
         }
 
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Error processing lineup ${lineup.id}:`, error);
         results.errors.push(`Failed to process lineup ${lineup.id}: ${error.message}`);
       }
@@ -204,6 +255,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/admin/settlement - Get settlement status for a gameweek
 export async function GET(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const gameweek = parseInt(searchParams.get('gameweek') || '1');

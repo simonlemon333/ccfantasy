@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { useAuth } from '../../hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 
 interface Room {
   id: string;
@@ -60,6 +61,15 @@ export default function LeaguesPage() {
     }
   };
 
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  };
+
   const createRoom = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -69,16 +79,11 @@ export default function LeaguesPage() {
     }
 
     try {
-      const requestData = {
-        ...createForm,
-        createdBy: user.id
-      };
-      console.log('Creating room with data:', requestData); // Debug log
-      
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData)
+        headers,
+        body: JSON.stringify(createForm)
       });
       const result = await response.json();
       console.log('Create room response:', result); // Debug log
@@ -106,14 +111,11 @@ export default function LeaguesPage() {
     }
 
     try {
-      console.log('Joining room with code:', joinCode, 'userId:', user.id); // Debug log
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/rooms/join', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          roomCode: joinCode,
-          userId: user.id
-        })
+        headers,
+        body: JSON.stringify({ roomCode: joinCode })
       });
       const result = await response.json();
       console.log('Join room response:', result); // Debug log
@@ -139,14 +141,11 @@ export default function LeaguesPage() {
     }
 
     try {
-      console.log('Directly joining room with code:', roomCode, 'userId:', user.id); // Debug log
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/rooms/join', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          roomCode: roomCode,
-          userId: user.id
-        })
+        headers,
+        body: JSON.stringify({ roomCode })
       });
       const result = await response.json();
       console.log('Direct join room response:', result); // Debug log
