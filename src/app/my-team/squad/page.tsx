@@ -711,16 +711,21 @@ function SquadPageContent() {
     const takenIds = new Set<string>();
     const teamCounts = new Map<string, number>(); // track players per team
 
+    // Helper: get team identifier (handles both flat and nested data)
+    const getTeamKey = (player: any) => {
+      return player.team || player.teams?.short_name || player.teams?.name || 'Unknown';
+    };
+
     // Helper function to check if we can add a player from their team
     const canAddFromTeam = (player: any) => {
-      const teamName = player.teams?.short_name || player.teams?.name || 'Unknown';
+      const teamName = getTeamKey(player);
       const currentCount = teamCounts.get(teamName) || 0;
       return currentCount < 3;
     };
 
     // Helper function to add a player and update team count
     const addPlayer = (player: any, isStarter: boolean = true) => {
-      const teamName = player.teams?.short_name || player.teams?.name || 'Unknown';
+      const teamName = getTeamKey(player);
       const currentCount = teamCounts.get(teamName) || 0;
       teamCounts.set(teamName, currentCount + 1);
       takenIds.add(player.id);
@@ -799,21 +804,21 @@ function SquadPageContent() {
         
         for (const replacement of replacements) {
           // Remove the expensive player first to check team count
-          const expensiveTeam = expensivePlayer.teams?.short_name || expensivePlayer.teams?.name || 'Unknown';
+          const expensiveTeam = getTeamKey(expensivePlayer);
           teamCounts.set(expensiveTeam, (teamCounts.get(expensiveTeam) || 1) - 1);
-          
+
           if (canAddFromTeam(replacement)) {
             // Replace the expensive player
-            picks[playerIndex] = { 
-              ...replacement, 
-              is_starter: expensivePlayer.is_starter, 
-              is_captain: false, 
-              is_vice_captain: false 
+            picks[playerIndex] = {
+              ...replacement,
+              is_starter: expensivePlayer.is_starter,
+              is_captain: false,
+              is_vice_captain: false
             };
             takenIds.delete(expensivePlayer.id);
             takenIds.add(replacement.id);
-            
-            const replacementTeam = replacement.teams?.short_name || replacement.teams?.name || 'Unknown';
+
+            const replacementTeam = getTeamKey(replacement);
             teamCounts.set(replacementTeam, (teamCounts.get(replacementTeam) || 0) + 1);
             
             total = picks.reduce((s, p) => s + p.price, 0);
