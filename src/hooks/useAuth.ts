@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import type { AuthUser } from '../lib/auth';
 import { auth } from '../lib/auth';
 
-const PROTECTED_PATHS = ['/my-team', '/admin', '/leagues'];
+const PROTECTED_PATHS = ['/my-team', '/admin'];
 
 // Custom hook for authentication state management
 export function useAuth() {
