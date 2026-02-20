@@ -33,11 +33,10 @@ export async function POST(request: NextRequest) {
     const playersToUpdate = [];
     const playersToInsert = [];
 
-    // Only process players from major teams to reduce processing time
-    const majorTeams = [1, 6, 12, 13, 14, 18]; // Arsenal, Chelsea, Liverpool, Man City, Man United, Tottenham
-    const relevantPlayers = fplPlayers.filter(player => majorTeams.includes(player.team));
-    
-    console.log(`Filtering to ${relevantPlayers.length} players from major teams...`);
+    // Process all 20 Premier League teams
+    const relevantPlayers = fplPlayers;
+
+    console.log(`Processing all ${relevantPlayers.length} players...`);
 
     for (const fplPlayer of relevantPlayers) {
       const playerName = `${fplPlayer.first_name} ${fplPlayer.second_name}`;
