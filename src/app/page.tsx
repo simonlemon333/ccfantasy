@@ -109,7 +109,7 @@ function HeroSection() {
           <h3 className="text-2xl font-bold text-center text-gray-800 mb-12">三步开始游戏</h3>
           <div className="grid md:grid-cols-3 gap-10 max-w-3xl mx-auto">
             {[
-              { step: '1', title: '组建阵容', desc: '选择15名球员，设定阵型和队长', color: 'from-blue-500 to-blue-600' },
+              { step: '1', title: '组建阵容', desc: '挑选11名球员，设定阵型和队长', color: 'from-blue-500 to-blue-600' },
               { step: '2', title: '加入联赛', desc: '创建或加入联赛，与朋友一起比赛', color: 'from-emerald-500 to-emerald-600' },
               { step: '3', title: '赢取积分', desc: '真实比赛数据计算积分，争夺榜首', color: 'from-purple-500 to-purple-600' },
             ].map(item => (
