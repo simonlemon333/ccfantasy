@@ -35,6 +35,7 @@ export default function PlayersPage() {
   const [selectedPosition, setSelectedPosition] = useState<string>('ALL');
   const [selectedTeam, setSelectedTeam] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('total_points');
+  const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPlayers, setTotalPlayers] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -42,7 +43,7 @@ export default function PlayersPage() {
 
   useEffect(() => {
     fetchPlayers();
-  }, [currentPage, selectedPosition, selectedTeam, sortBy]);
+  }, [currentPage, selectedPosition, selectedTeam, sortBy, searchQuery]);
 
   useEffect(() => {
     fetchTeams();
@@ -81,7 +82,11 @@ export default function PlayersPage() {
       if (selectedTeam !== 'ALL') {
         params.append('team', selectedTeam);
       }
-      
+
+      if (searchQuery.trim()) {
+        params.append('search', searchQuery.trim());
+      }
+
       const response = await fetch(`/api/players?${params}`);
       const result = await response.json();
       if (result.success) {
@@ -110,7 +115,7 @@ export default function PlayersPage() {
 
   if (loading) {
     return (
-      <Layout title="球员市场">
+      <Layout title="球员">
         <div className="container mx-auto px-6 py-12 text-center">
           <div className="text-2xl">加载球员数据中...</div>
         </div>
@@ -119,13 +124,27 @@ export default function PlayersPage() {
   }
 
   return (
-    <Layout title="球员市场">
+    <Layout title="球员">
       <div className="container mx-auto px-6 py-12">
-        
-        {/* 筛选器 */}
+
+        {/* 搜索和筛选 */}
         <Card className="mb-8">
           <div className="flex flex-wrap gap-4 items-center justify-between">
             <div className="flex flex-wrap gap-4 items-center">
+              {/* 搜索框 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">搜索球员</label>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="输入球员名字..."
+                  className="border border-gray-300 rounded-lg px-3 py-2 min-w-[180px]"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">球队筛选</label>
                 <select 

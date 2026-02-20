@@ -1,57 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { supabase } from '@/lib/supabase';
 import { fplApi } from '@/lib/fplApi';
+import { requireAdminAuth } from '@/lib/requireAdminAuth';
 
-// POST /api/sync/fpl - Sync player data from FPL API
+// POST /api/sync/fpl - Sync player data from FPL API (batch upsert)
 export async function POST(request: NextRequest) {
+  const authResult = await requireAdminAuth(request);
+  if (authResult.error) return authResult.error;
+
+  if (!supabaseAdmin) {
+    return NextResponse.json({
+      success: false,
+      error: 'SUPABASE_SERVICE_ROLE_KEY not configured. Batch upsert requires admin client.'
+    }, { status: 500 });
+  }
+
   try {
-    console.log('Starting FPL data sync...');
-    
-    // Get current data from FPL API
+    console.log('Starting FPL data sync (batch mode)...');
+
     const fplPlayers = await fplApi.getAllPlayers();
     const fplTeams = await fplApi.getAllTeams();
-    
+
     console.log(`Fetched ${fplPlayers.length} players and ${fplTeams.length} teams from FPL API`);
 
-    // Update players with FPL data (optimized with batch operations)
-    let updatedCount = 0;
-    let newPlayersCount = 0;
-    
-    console.log(`Processing ${fplPlayers.length} players from FPL API...`);
-
-    // Get existing players to avoid individual lookups
-    const { data: existingPlayers } = await supabase
-      .from('players')
-      .select('id, name, position');
-
-    const existingPlayerMap = new Map();
-    existingPlayers?.forEach(player => {
-      const key = `${player.name.toLowerCase()}_${player.position}`;
-      existingPlayerMap.set(key, player);
-    });
-
-    const playersToUpdate = [];
-    const playersToInsert = [];
-
-    // Process all 20 Premier League teams
-    const relevantPlayers = fplPlayers;
-
-    console.log(`Processing all ${relevantPlayers.length} players...`);
-
-    for (const fplPlayer of relevantPlayers) {
+    // Build all player records for batch upsert
+    const allPlayers = fplPlayers.map(fplPlayer => {
       const playerName = `${fplPlayer.first_name} ${fplPlayer.second_name}`;
       const position = fplApi.convertPosition(fplPlayer.element_type);
       const price = fplApi.convertPrice(fplPlayer.now_cost);
       const teamShortName = fplApi.getTeamShortName(fplPlayer.team);
       const photoUrl = fplApi.getPlayerPhotoUrl(fplPlayer.photo);
 
-      const playerKey = `${playerName.toLowerCase()}_${position}`;
-      const existingPlayer = existingPlayerMap.get(playerKey);
-
-      const playerData = {
+      return {
+        fpl_id: fplPlayer.id,
         name: playerName,
         position,
-        team: teamShortName,                    // Now using team short name directly
+        team: teamShortName,
         price,
         total_points: fplPlayer.total_points,
         form: parseFloat(fplPlayer.form) || 0,
@@ -64,141 +49,81 @@ export async function POST(request: NextRequest) {
         saves: fplPlayer.saves,
         bonus_points: fplPlayer.bonus,
         photo_url: photoUrl,
-        fpl_id: fplPlayer.id,
+        is_available: true,
         updated_at: new Date().toISOString()
       };
+    });
 
-      if (existingPlayer) {
-        playersToUpdate.push({ ...playerData, id: existingPlayer.id });
-      } else {
-        playersToInsert.push({ ...playerData, is_available: true });
-      }
+    // Batch upsert all players in one call (uses fpl_id unique index)
+    console.log(`Batch upserting ${allPlayers.length} players...`);
+    const { data: upsertedPlayers, error: playerError } = await supabaseAdmin
+      .from('players')
+      .upsert(allPlayers, { onConflict: 'fpl_id' })
+      .select('id');
+
+    if (playerError) {
+      console.error('Player batch upsert error:', playerError);
+      throw new Error(`Player upsert failed: ${playerError.message}`);
     }
 
-    // Batch update existing players
-    if (playersToUpdate.length > 0) {
-      console.log(`Updating ${playersToUpdate.length} existing players...`);
-      for (const player of playersToUpdate) {
-        const { error } = await supabase
-          .from('players')
-          .update(player)
-          .eq('id', player.id);
-        
-        if (!error) updatedCount++;
-      }
-    }
+    const playersCount = upsertedPlayers?.length || 0;
+    console.log(`Successfully upserted ${playersCount} players`);
 
-    // Batch insert new players
-    if (playersToInsert.length > 0) {
-      console.log(`Inserting ${playersToInsert.length} new players...`);
-      const { data, error } = await supabase
-        .from('players')
-        .insert(playersToInsert)
-        .select('id');
-      
-      if (!error && data) {
-        newPlayersCount = data.length;
-      }
-    }
-
-    // Update current gameweek
+    // Sync fixtures for current and nearby gameweeks
     const currentGameweek = await fplApi.getCurrentGameweek();
-    
-    // Sync fixtures for current and next few gameweeks (limited scope to reduce timeout)
     let fixturesCount = 0;
     const gameweeksToSync = [currentGameweek - 1, currentGameweek, currentGameweek + 1].filter(gw => gw >= 1 && gw <= 38);
-    
+
     console.log(`Syncing fixtures for gameweeks: ${gameweeksToSync.join(', ')}`);
-    
+
+    // Collect all fixtures across gameweeks
+    const allFixtures = [];
     for (const gw of gameweeksToSync) {
       try {
-        console.log(`Fetching fixtures for gameweek ${gw}...`);
         const fplFixtures = await fplApi.getFixtures(gw);
-        console.log(`Found ${fplFixtures.length} fixtures for gameweek ${gw}`);
-        
-        // Batch insert fixtures to reduce database calls
-        const fixtureDataBatch = fplFixtures.map(fplFixture => ({
-          id: fplFixture.id,
-          gameweek: fplFixture.event,
-          home_team: fplApi.getTeamShortName(fplFixture.team_h),
-          away_team: fplApi.getTeamShortName(fplFixture.team_a),
-          kickoff_time: fplFixture.kickoff_time,
-          home_score: fplFixture.team_h_score || null,
-          away_score: fplFixture.team_a_score || null,
-          finished: fplFixture.finished,
-          minutes_played: fplFixture.minutes
-        }));
-        
-        if (fixtureDataBatch.length > 0) {
-          // Try upsert first, fallback to checking and inserting individually
-          let { data: insertedFixtures, error: fixtureError } = await supabase
-            .from('fixtures')
-            .upsert(fixtureDataBatch, {
-              onConflict: 'id'
-            })
-            .select('id');
-            
-          // If constraint doesn't exist, handle manually
-          if (fixtureError && fixtureError.code === '42P10') {
-            console.log(`Constraint not found, using manual deduplication for gameweek ${gw}`);
-            insertedFixtures = [];
-            
-            for (const fixtureData of fixtureDataBatch) {
-              // Check if fixture already exists
-              const { data: existingFixture } = await supabase
-                .from('fixtures')
-                .select('id')
-                .eq('id', fixtureData.id)
-                .single();
-              
-              if (existingFixture) {
-                // Update existing fixture
-                const { error: updateError } = await supabase
-                  .from('fixtures')
-                  .update(fixtureData)
-                  .eq('id', existingFixture.id);
-                
-                if (!updateError) {
-                  insertedFixtures.push(existingFixture);
-                }
-              } else {
-                // Insert new fixture
-                const { data: newFixture, error: insertError } = await supabase
-                  .from('fixtures')
-                  .insert(fixtureData)
-                  .select('id')
-                  .single();
-                
-                if (!insertError && newFixture) {
-                  insertedFixtures.push(newFixture);
-                }
-              }
-            }
-            fixtureError = null; // Clear error since we handled it
-          }
-            
-          if (!fixtureError && insertedFixtures) {
-            fixturesCount += insertedFixtures.length;
-            console.log(`Successfully synced ${insertedFixtures.length} fixtures for gameweek ${gw}`);
-          } else {
-            console.error(`Error syncing fixtures for gameweek ${gw}:`, fixtureError);
-          }
+        for (const fplFixture of fplFixtures) {
+          allFixtures.push({
+            id: fplFixture.id,
+            gameweek: fplFixture.event,
+            home_team: fplApi.getTeamShortName(fplFixture.team_h),
+            away_team: fplApi.getTeamShortName(fplFixture.team_a),
+            kickoff_time: fplFixture.kickoff_time,
+            home_score: fplFixture.team_h_score || null,
+            away_score: fplFixture.team_a_score || null,
+            finished: fplFixture.finished,
+            minutes_played: fplFixture.minutes
+          });
         }
       } catch (error) {
-        console.error(`Error syncing fixtures for gameweek ${gw}:`, error);
+        console.error(`Error fetching fixtures for gameweek ${gw}:`, error);
       }
     }
-    
+
+    // Batch upsert all fixtures in one call
+    if (allFixtures.length > 0) {
+      console.log(`Batch upserting ${allFixtures.length} fixtures...`);
+      const { data: upsertedFixtures, error: fixtureError } = await supabaseAdmin
+        .from('fixtures')
+        .upsert(allFixtures, { onConflict: 'id' })
+        .select('id');
+
+      if (fixtureError) {
+        console.error('Fixture batch upsert error:', fixtureError);
+      } else {
+        fixturesCount = upsertedFixtures?.length || 0;
+        console.log(`Successfully upserted ${fixturesCount} fixtures`);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        playersUpdated: updatedCount,
-        newPlayers: newPlayersCount,
+        playersUpserted: playersCount,
         totalFplPlayers: fplPlayers.length,
         fixturesSynced: fixturesCount,
         currentGameweek
       },
-      message: `Sync completed: ${updatedCount} players updated, ${newPlayersCount} new players, ${fixturesCount} fixtures synced`
+      message: `Sync completed: ${playersCount} players upserted, ${fixturesCount} fixtures synced`
     });
 
   } catch (error) {
@@ -213,7 +138,6 @@ export async function POST(request: NextRequest) {
 // GET /api/sync/fpl - Get sync status
 export async function GET() {
   try {
-    // Get last sync time from a log table or just return current player count
     const { count } = await supabase
       .from('players')
       .select('*', { count: 'exact', head: true });

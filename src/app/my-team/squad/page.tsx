@@ -6,6 +6,7 @@ import Layout from '../../../components/Layout';
 import Card from '../../../components/ui/Card';
 import Button from '../../../components/ui/Button';
 import PlayerBadge from '../../../components/PlayerBadge';
+import { useToast } from '../../../components/ui/Toast';
 import { useAuth } from '../../../hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 
@@ -40,6 +41,7 @@ const FORMATIONS = [
 ];
 
 function SquadPageContent() {
+  const { showToast } = useToast();
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [formation, setFormation] = useState(FORMATIONS[0]);
@@ -239,12 +241,12 @@ function SquadPageContent() {
 
   const saveLineup = async () => {
     if (!user) {
-      alert('请先登录后再保存阵容');
+      showToast('请先登录后再保存阵容', 'error');
       return;
     }
 
     if (squad.length === 0) {
-      alert('请先选择球员组成阵容');
+      showToast('请先选择球员组成阵容', 'error');
       return;
     }
 
@@ -348,7 +350,7 @@ function SquadPageContent() {
       if (result.success) {
         setLastSaved(new Date().toLocaleString());
         setSaveErrors(null);
-        alert('阵容保存成功！');
+        showToast('阵容保存成功!', 'success');
       } else {
         setSaveErrors([`保存失败: ${result.error}`]);
       }
@@ -362,12 +364,12 @@ function SquadPageContent() {
 
   const saveAndSubmitToLeague = async (roomId: string) => {
     if (!user) {
-      alert('请先登录后再保存阵容');
+      showToast('请先登录后再保存阵容', 'error');
       return;
     }
 
     if (squad.length === 0) {
-      alert('请先选择球员组成阵容');
+      showToast('请先选择球员组成阵容', 'error');
       return;
     }
 
@@ -479,14 +481,13 @@ function SquadPageContent() {
           localStorage.removeItem(localDraftKey);
           setLocalDraft(null);
         }
-        alert(`阵容已保存并提交到联赛！\n\n你可以在联赛页面查看积分榜。`);
+        showToast('阵容已保存并提交到联赛!', 'success');
         setShowSaveModal(false);
       } else {
-        // If submission failed, show error but keep the saved draft
         if (submitResult.error.includes('already submitted')) {
-          alert(`提交失败: 你已经在这个联赛的当前游戏周提交过阵容了。\n\n阵容已保存为草稿。`);
+          showToast('你已经在这个联赛提交过阵容了，已保存为草稿', 'error');
         } else {
-          alert(`提交失败: ${submitResult.error}\n\n阵容已保存为草稿。`);
+          showToast(`提交失败: ${submitResult.error}`, 'error');
         }
       }
     } catch (error) {
@@ -616,19 +617,19 @@ function SquadPageContent() {
     const maxPositions = { GK: 1, DEF: formation.def, MID: formation.mid, FWD: formation.fwd };
     const currentPosCount = stats.positionCounts[player.position];
     if (currentPosCount >= maxPositions[player.position]) {
-      alert(`该位置已满员 (阵型限制：最多 ${maxPositions[player.position]} 人)`);
+      showToast(`该位置已满员 (最多 ${maxPositions[player.position]} 人)`, 'error');
       return;
     }
 
     // Check budget
     if (stats.remainingBudget < player.price) {
-      alert('预算不足');
+      showToast('预算不足', 'error');
       return;
     }
 
     // Check total squad size (11 starters)
     if (squad.length >= 11) {
-      alert('球队已满员 (最多11人)');
+      showToast('球队已满员 (最多11人)', 'error');
       return;
     }
 

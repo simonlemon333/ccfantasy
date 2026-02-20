@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../../../components/Layout';
 import Card from '../../../components/ui/Card';
 import Button from '../../../components/ui/Button';
+import { useToast } from '../../../components/ui/Toast';
 import { useAuth } from '../../../hooks/useAuth';
 
 interface Room {
@@ -45,6 +46,7 @@ export default function LeagueDetailPage({ params }: LeagueDetailPageProps) {
   const [leaveLoading, setLeaveLoading] = useState(false);
 
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [roomId, setRoomId] = useState<string>('');
 
   // Await the params
@@ -107,14 +109,14 @@ export default function LeagueDetailPage({ params }: LeagueDetailPageProps) {
       const result = await response.json();
 
       if (result.success) {
-        alert(result.message || '成功加入联赛！');
-        fetchRoomDetails(); // Refresh the data
+        showToast(result.message || '成功加入联赛!', 'success');
+        fetchRoomDetails();
       } else {
-        alert(`加入失败: ${result.error}`);
+        showToast(`加入失败: ${result.error}`, 'error');
       }
     } catch (error) {
       console.error('Join room error:', error);
-      alert('加入联赛时出错');
+      showToast('加入联赛时出错', 'error');
     } finally {
       setJoinLoading(false);
     }
@@ -135,14 +137,14 @@ export default function LeagueDetailPage({ params }: LeagueDetailPageProps) {
       const result = await response.json();
 
       if (result.success) {
-        alert('成功离开联赛');
-        fetchRoomDetails(); // Refresh the data
+        showToast('成功离开联赛', 'success');
+        fetchRoomDetails();
       } else {
-        alert(`离开失败: ${result.error}`);
+        showToast(`离开失败: ${result.error}`, 'error');
       }
     } catch (error) {
       console.error('Leave room error:', error);
-      alert('离开联赛时出错');
+      showToast('离开联赛时出错', 'error');
     } finally {
       setLeaveLoading(false);
     }
@@ -299,7 +301,7 @@ export default function LeagueDetailPage({ params }: LeagueDetailPageProps) {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => window.location.href = `/leaderboard?roomId=${room.id}&userId=${member.user_id}`}
+                      onClick={() => window.location.href = `/leagues?tab=leaderboard&roomId=${room.id}`}
                     >
                       查看排名
                     </Button>
